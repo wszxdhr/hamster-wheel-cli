@@ -72,6 +72,28 @@ export function parseGhRunList(output: string): GhRunInfo[] {
   }
 }
 
+export function resolvePrTitle(branch: string, title?: string): string {
+  const trimmed = title?.trim();
+  if (trimmed) return trimmed;
+  return `chore: 自动 PR (${branch})`;
+}
+
+export function buildPrCreateArgs(branch: string, config: PrConfig): string[] {
+  const args = ['pr', 'create', '--head', branch, '--title', resolvePrTitle(branch, config.title)];
+  if (config.bodyPath) {
+    args.push('--body-file', config.bodyPath);
+  } else {
+    args.push('--body', '自动生成 PR（未提供 body 文件）');
+  }
+  if (config.draft) {
+    args.push('--draft');
+  }
+  if (config.reviewers && config.reviewers.length > 0) {
+    args.push('--reviewer', config.reviewers.join(','));
+  }
+  return args;
+}
+
 export async function viewPr(branch: string, cwd: string, logger: Logger): Promise<GhPrInfo | null> {
   const result = await runCommand('gh', ['pr', 'view', branch, '--json', 'number,title,url,state,headRefName'], {
     cwd,
@@ -96,19 +118,7 @@ export async function viewPr(branch: string, cwd: string, logger: Logger): Promi
 
 export async function createPr(branch: string, config: PrConfig, cwd: string, logger: Logger): Promise<GhPrInfo | null> {
   if (!config.enable) return null;
-  const args = ['pr', 'create', '--head', branch];
-  if (config.title) {
-    args.push('--title', config.title);
-  }
-  if (config.bodyPath) {
-    args.push('--body-file', config.bodyPath);
-  }
-  if (config.draft) {
-    args.push('--draft');
-  }
-  if (config.reviewers && config.reviewers.length > 0) {
-    args.push('--reviewer', config.reviewers.join(','));
-  }
+  const args = buildPrCreateArgs(branch, config);
 
   const result = await runCommand('gh', args, {
     cwd,

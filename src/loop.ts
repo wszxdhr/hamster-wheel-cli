@@ -1,7 +1,6 @@
 import fs from 'fs-extra';
 import path from 'node:path';
 import { buildPrompt, formatIterationRecord, mergeTokenUsage, runAi } from './ai';
-import { buildAiEnv } from './env';
 import { GhPrInfo, createPr, listFailedRuns, viewPr } from './gh';
 import { Logger } from './logger';
 import { commitAll, ensureWorktree, getCurrentBranch, getRepoRoot, isBranchPushed, isWorktreeClean, pushBranch, removeWorktree } from './git';
@@ -163,14 +162,7 @@ export async function runLoop(config: LoopConfig): Promise<void> {
     branchName = await getCurrentBranch(workDir, logger);
   }
 
-  const aiEnv = await buildAiEnv({
-    envFiles: config.aiEnvFiles,
-    envOverrides: config.ai.env,
-    repoRoot,
-    workDir,
-    logger
-  });
-  const aiConfig = { ...config.ai, env: aiEnv };
+  const aiConfig = config.ai;
 
   let accumulatedUsage: TokenUsage | null = null;
   let lastTestResults: TestRunResult[] | null = null;

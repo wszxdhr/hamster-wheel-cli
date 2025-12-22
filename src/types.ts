@@ -4,7 +4,6 @@ export interface AiCliConfig {
   readonly command: string;
   readonly args: string[];
   readonly promptArg?: string;
-  readonly env?: Record<string, string>;
 }
 
 export interface TokenUsage {
@@ -63,7 +62,6 @@ export interface LoopConfig {
   readonly iterations: number;
   readonly stopSignal: string;
   readonly ai: AiCliConfig;
-  readonly aiEnvFiles: string[];
   readonly workflowFiles: WorkflowFiles;
   readonly git: WorktreeConfig;
   readonly tests: TestConfig;

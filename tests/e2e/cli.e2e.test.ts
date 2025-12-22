@@ -15,4 +15,6 @@ test('CLI 帮助信息可正常输出', async () => {
   });
 
   assert.ok(stdout.includes('基于 AI CLI 的持续迭代开发工具'));
+  assert.ok(!stdout.includes('--ai-env-file'));
+  assert.ok(!stdout.includes('--ai-env'));
 });
