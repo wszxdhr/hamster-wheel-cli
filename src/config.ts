@@ -8,6 +8,8 @@ export interface CliOptions {
   readonly aiCli: string;
   readonly aiArgs: string[];
   readonly aiPromptArg?: string;
+  readonly aiEnv: Record<string, string>;
+  readonly aiEnvFiles: string[];
   readonly notesFile: string;
   readonly planFile: string;
   readonly workflowDoc: string;
@@ -34,8 +36,13 @@ function buildAiConfig(options: CliOptions): AiCliConfig {
   return {
     command: options.aiCli,
     args: options.aiArgs,
-    promptArg: options.aiPromptArg
+    promptArg: options.aiPromptArg,
+    env: options.aiEnv
   };
+}
+
+function buildAiEnvFiles(options: CliOptions, cwd: string): string[] {
+  return options.aiEnvFiles.map(file => resolvePath(cwd, file));
 }
 
 function buildWorktreeConfig(options: CliOptions): WorktreeConfig {
@@ -78,6 +85,7 @@ export function buildLoopConfig(options: CliOptions, cwd: string): LoopConfig {
     iterations: options.iterations,
     stopSignal: options.stopSignal,
     ai: buildAiConfig(options),
+    aiEnvFiles: buildAiEnvFiles(options, cwd),
     workflowFiles: buildWorkflowFiles(options, cwd),
     git: buildWorktreeConfig(options),
     tests: buildTestConfig(options),

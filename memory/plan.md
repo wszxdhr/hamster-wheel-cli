@@ -1,8 +1,8 @@
 # 持续迭代计划
 
-- [x] ✅ 需求澄清：日志输出需在每行前添加时间戳，覆盖 info/success/warn/error/debug 与 CLI 顶层异常输出。
-- [x] ✅ 设计与方案：在 Logger 统一格式化时间戳；补充单元测试与 CLI 帮助输出 e2e 测试；补齐 e2e 脚本。
-- [x] ✅ 开发实现：更新 Logger 与 CLI 错误输出；新增 logger 单测与 CLI e2e 测试；新增 `yarn e2e` 脚本。
-- [x] ✅ 自审：确认时间戳格式一致、输出顺序正确、无类型回退到 any。
-- [ ] 测试：运行 `yarn test` 与 `yarn e2e`，记录结果。
+- [x] ✅ 需求澄清：确认 codex 无法联网多半来自 AI CLI 环境变量未加载/工作区切换导致 `.env` 丢失。
+- [x] ✅ 设计与方案：新增 env 解析与加载逻辑，支持 CLI 传入 env 与 env 文件；默认自动加载仓库或 worktree 的 `.env`。
+- [x] ✅ 开发实现：补充 env 工具模块；CLI/config/loop 透传 env；README 更新；新增 env 单测与 fixture。
+- [x] ✅ 自审：检查 env 合并优先级、worktree 兼容性与错误提示。
+- [x] ✅ 测试：运行 `yarn test` 与 `yarn e2e`，记录结果。
 - [ ] PR：准备摘要、测试结果、风险，使用 `gh` 创建 PR。

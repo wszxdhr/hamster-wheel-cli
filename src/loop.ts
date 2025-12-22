@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'node:path';
 import { buildPrompt, formatIterationRecord, mergeTokenUsage, runAi } from './ai';
+import { buildAiEnv } from './env';
 import { GhPrInfo, createPr, listFailedRuns, viewPr } from './gh';
 import { Logger } from './logger';
 import { commitAll, ensureWorktree, getCurrentBranch, getRepoRoot, isBranchPushed, isWorktreeClean, pushBranch, removeWorktree } from './git';
@@ -162,6 +163,15 @@ export async function runLoop(config: LoopConfig): Promise<void> {
     branchName = await getCurrentBranch(workDir, logger);
   }
 
+  const aiEnv = await buildAiEnv({
+    envFiles: config.aiEnvFiles,
+    envOverrides: config.ai.env,
+    repoRoot,
+    workDir,
+    logger
+  });
+  const aiConfig = { ...config.ai, env: aiEnv };
+
   let accumulatedUsage: TokenUsage | null = null;
   let lastTestResults: TestRunResult[] | null = null;
   let prInfo: GhPrInfo | null = null;
@@ -183,7 +193,7 @@ export async function runLoop(config: LoopConfig): Promise<void> {
     logger.debug(`第 ${i} 轮提示长度: ${prompt.length}`);
 
     logger.info(`第 ${i} 轮提示构建完成，调用 AI CLI...`);
-    const aiResult = await runAi(prompt, config.ai, logger, workDir);
+    const aiResult = await runAi(prompt, aiConfig, logger, workDir);
     accumulatedUsage = mergeTokenUsage(accumulatedUsage, aiResult.usage);
 
     const hitStop = aiResult.output.includes(config.stopSignal);
