@@ -1,10 +1,10 @@
 import fs from 'fs-extra';
 import path from 'node:path';
-import { buildPrompt, formatIterationRecord, runAi } from './ai';
+import { buildPrompt, formatIterationRecord, mergeTokenUsage, runAi } from './ai';
 import { createPr, listFailedRuns, viewPr } from './gh';
 import { Logger } from './logger';
 import { commitAll, ensureWorktree, getCurrentBranch, getRepoRoot, pushBranch } from './git';
-import { LoopConfig } from './types';
+import { LoopConfig, SingleTestResult, TestRunResult, TokenUsage } from './types';
 import { appendSection, ensureFile, isoNow, readFileSafe, resolvePath, runCommand } from './utils';
 
 async function ensureWorkflowFiles(config: LoopConfig): Promise<void> {
@@ -13,24 +13,58 @@ async function ensureWorkflowFiles(config: LoopConfig): Promise<void> {
   await ensureFile(config.workflowFiles.notesFile, '# 持久化记忆\n');
 }
 
-async function runShell(command: string, cwd: string): Promise<void> {
-  const result = await runCommand('bash', ['-lc', command], { cwd });
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr || result.stdout);
-  }
+function describeTestResult(result: SingleTestResult): string {
+  const label = result.kind === 'unit' ? '单元测试' : 'e2e 测试';
+  if (result.status === 'skipped') return `- ${label}: 未执行`;
+  if (result.status === 'passed') return `- ${label}: 通过`;
+  const exit = result.exitCode !== undefined ? `（退出码 ${result.exitCode}）` : '';
+  const reason = result.message ? `，原因：${result.message}` : '';
+  return `- ${label}: 失败${exit}${reason}`;
 }
 
-async function runTests(config: LoopConfig, workDir: string, logger: Logger): Promise<void> {
-  if (config.runTests && config.tests.unitCommand) {
-    logger.info(`执行单元测试: ${config.tests.unitCommand}`);
-    await runShell(config.tests.unitCommand, workDir);
-    logger.success('单元测试完成');
+function formatTestSection(iteration: number, result: TestRunResult): string {
+  return [
+    `### 测试结果｜迭代 ${iteration}`,
+    describeTestResult(result.unit),
+    describeTestResult(result.e2e),
+    ''
+  ].join('\n');
+}
+
+async function runSingleTest(
+  kind: 'unit' | 'e2e',
+  enabled: boolean,
+  command: string | undefined,
+  workDir: string,
+  logger: Logger
+): Promise<SingleTestResult> {
+  if (!enabled || !command) return { kind, status: 'skipped' };
+
+  const readableName = kind === 'unit' ? '单元测试' : 'e2e 测试';
+  logger.info(`执行${readableName}: ${command}`);
+  const result = await runCommand('bash', ['-lc', command], { cwd: workDir });
+
+  if (result.exitCode === 0) {
+    logger.success(`${readableName}完成`);
+    return { kind, status: 'passed', command };
   }
-  if (config.runE2e && config.tests.e2eCommand) {
-    logger.info(`执行 e2e 测试: ${config.tests.e2eCommand}`);
-    await runShell(config.tests.e2eCommand, workDir);
-    logger.success('e2e 测试完成');
-  }
+
+  const message = (result.stderr || result.stdout || `退出码 ${result.exitCode}`).trim();
+  logger.warn(`${readableName}失败（退出码 ${result.exitCode}）`);
+  return {
+    kind,
+    status: 'failed',
+    command,
+    exitCode: result.exitCode,
+    message
+  };
+}
+
+async function runTests(config: LoopConfig, workDir: string, logger: Logger): Promise<TestRunResult> {
+  const unit = await runSingleTest('unit', config.runTests, config.tests.unitCommand, workDir, logger);
+  const e2e = await runSingleTest('e2e', config.runE2e, config.tests.e2eCommand, workDir, logger);
+  const hasFailure = unit.status === 'failed' || e2e.status === 'failed';
+  return { unit, e2e, hasFailure };
 }
 
 function buildBodyFile(workDir: string): string {
@@ -68,6 +102,10 @@ export async function runLoop(config: LoopConfig): Promise<void> {
     branchName = await getCurrentBranch(workDir);
   }
 
+  let accumulatedUsage: TokenUsage | null = null;
+  let lastTestResult: TestRunResult | null = null;
+  let prFailed = false;
+
   for (let i = 1; i <= config.iterations; i += 1) {
     const workflowGuide = await readFileSafe(config.workflowFiles.workflowDoc);
     const plan = await readFileSafe(config.workflowFiles.planFile);
@@ -82,42 +120,64 @@ export async function runLoop(config: LoopConfig): Promise<void> {
     });
 
     logger.info(`第 ${i} 轮提示构建完成，调用 AI CLI...`);
-    const aiOutput = await runAi(prompt, config.ai, logger, workDir);
+    const aiResult = await runAi(prompt, config.ai, logger, workDir);
+    accumulatedUsage = mergeTokenUsage(accumulatedUsage, aiResult.usage);
 
     const record = formatIterationRecord({
       iteration: i,
       prompt,
-      aiOutput,
+      aiOutput: aiResult.output,
       timestamp: isoNow()
     });
 
     await appendSection(config.workflowFiles.notesFile, record);
     logger.success(`已将第 ${i} 轮输出写入 ${config.workflowFiles.notesFile}`);
 
-    const hitStop = aiOutput.includes(config.stopSignal);
-    await runTests(config, workDir, logger).catch(error => {
-      logger.warn(`测试执行失败: ${String(error)}`);
-    });
+    const hitStop = aiResult.output.includes(config.stopSignal);
+    const shouldRunTests = config.runTests || config.runE2e;
+    if (shouldRunTests) {
+      lastTestResult = await runTests(config, workDir, logger).catch(error => {
+        logger.warn(`测试执行失败: ${String(error)}`);
+        return null;
+      });
 
-    if (hitStop) {
+      if (lastTestResult) {
+        await appendSection(config.workflowFiles.notesFile, formatTestSection(i, lastTestResult));
+        logger.info('已记录测试结果至 notes，供下一轮参考');
+      }
+    }
+
+    const hasTestFailure = lastTestResult?.hasFailure === true;
+
+    if (hitStop && !hasTestFailure) {
       logger.info(`检测到停止标记 ${config.stopSignal}，提前结束循环`);
       break;
     }
+    if (hitStop && hasTestFailure) {
+      logger.info(`检测到停止标记 ${config.stopSignal}，但测试失败，继续进入下一轮修复`);
+    }
   }
 
-  if (config.autoCommit) {
+  const lastTestFailed = lastTestResult?.hasFailure === true;
+
+  if (lastTestFailed) {
+    logger.warn('存在未通过的测试，已跳过自动提交/推送/PR');
+  }
+
+  if (config.autoCommit && !lastTestFailed) {
     await commitAll('chore: fuxi 自动迭代提交', workDir, logger).catch(error => {
       logger.warn(String(error));
     });
   }
 
-  if (config.autoPush && branchName) {
+  if (config.autoPush && branchName && !lastTestFailed) {
     await pushBranch(branchName, workDir, logger).catch(error => {
       logger.warn(String(error));
     });
   }
 
-  if (config.pr.enable && branchName) {
+  if (config.pr.enable && branchName && !lastTestFailed) {
+    logger.info('开始创建 PR...');
     const bodyFile = config.pr.bodyPath ?? buildBodyFile(workDir);
     const notes = await readFileSafe(config.workflowFiles.notesFile);
     const plan = await readFileSafe(config.workflowFiles.planFile);
@@ -132,13 +192,27 @@ export async function runLoop(config: LoopConfig): Promise<void> {
           logger.warn(`Actions 失败: ${run.name} (${run.status}/${run.conclusion ?? 'unknown'}) ${run.url}`);
         });
       }
+    } else {
+      prFailed = true;
+      logger.error('PR 创建失败，详见上方 gh 输出');
     }
-  } else if (branchName) {
+  } else if (branchName && !config.pr.enable) {
+    logger.info('未开启 PR 创建（--pr 未传），尝试查看已有 PR');
     const prInfo = await viewPr(branchName, workDir, logger);
-    if (prInfo) {
-      logger.info(`已有 PR: ${prInfo.url}`);
-    }
+    if (prInfo) logger.info(`已有 PR: ${prInfo.url}`);
   }
 
-  logger.success('fuxi 迭代流程结束');
+  if (accumulatedUsage) {
+    const input = accumulatedUsage.inputTokens ?? '-';
+    const output = accumulatedUsage.outputTokens ?? '-';
+    logger.info(`Token 消耗汇总：输入 ${input}｜输出 ${output}｜总计 ${accumulatedUsage.totalTokens}`);
+  } else {
+    logger.info('未解析到 Token 消耗信息，可检查 AI CLI 输出格式是否包含 token 提示');
+  }
+
+  if (lastTestFailed || prFailed) {
+    throw new Error('流程存在未解决的问题（测试未通过或 PR 创建失败）');
+  }
+
+  logger.success(`fuxi 迭代流程结束｜Token 总计 ${accumulatedUsage?.totalTokens ?? '未知'}`);
 }

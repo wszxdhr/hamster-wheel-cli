@@ -1,4 +1,15 @@
-import chalk from 'chalk';
+type Colorizer = (value: string) => string;
+
+const wrap = (code: string): Colorizer => (value: string) => `\u001b[${code}m${value}\u001b[0m`;
+
+const colors = {
+  blue: wrap('34'),
+  green: wrap('32'),
+  yellow: wrap('33'),
+  red: wrap('31'),
+  magenta: wrap('35'),
+  gray: wrap('90')
+} as const;
 
 export interface LoggerOptions {
   readonly verbose?: boolean;
@@ -12,29 +23,29 @@ export class Logger {
   }
 
   info(message: string): void {
-    console.log(this.formatLine(chalk.blue('info'), '  ', message));
+    console.log(this.formatLine(colors.blue('info'), '  ', message));
   }
 
   success(message: string): void {
-    console.log(this.formatLine(chalk.green('ok'), '    ', message));
+    console.log(this.formatLine(colors.green('ok'), '    ', message));
   }
 
   warn(message: string): void {
-    console.warn(this.formatLine(chalk.yellow('warn'), '  ', message));
+    console.warn(this.formatLine(colors.yellow('warn'), '  ', message));
   }
 
   error(message: string): void {
-    console.error(this.formatLine(chalk.red('err'), '   ', message));
+    console.error(this.formatLine(colors.red('err'), '   ', message));
   }
 
   debug(message: string): void {
     if (!this.verbose) return;
-    console.log(this.formatLine(chalk.magenta('dbg'), '   ', message));
+    console.log(this.formatLine(colors.magenta('dbg'), '   ', message));
   }
 
   private formatLine(label: string, padding: string, message: string): string {
     const timestamp = this.formatTimestamp(new Date());
-    return `${chalk.gray(timestamp)} ${label}${padding}${message}`;
+    return `${colors.gray(timestamp)} ${label}${padding}${message}`;
   }
 
   private formatTimestamp(date: Date): string {

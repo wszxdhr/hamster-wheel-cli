@@ -5,6 +5,17 @@ export interface AiCliConfig {
   readonly env?: Record<string, string>;
 }
 
+export interface TokenUsage {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens: number;
+}
+
+export interface AiResult {
+  readonly output: string;
+  readonly usage: TokenUsage | null;
+}
+
 export interface WorktreeConfig {
   readonly useWorktree: boolean;
   readonly branchName?: string;
@@ -15,6 +26,22 @@ export interface WorktreeConfig {
 export interface TestConfig {
   readonly unitCommand?: string;
   readonly e2eCommand?: string;
+}
+
+export type TestStatus = 'skipped' | 'passed' | 'failed';
+
+export interface SingleTestResult {
+  readonly kind: 'unit' | 'e2e';
+  readonly status: TestStatus;
+  readonly command?: string;
+  readonly exitCode?: number;
+  readonly message?: string;
+}
+
+export interface TestRunResult {
+  readonly unit: SingleTestResult;
+  readonly e2e: SingleTestResult;
+  readonly hasFailure: boolean;
 }
 
 export interface PrConfig {
