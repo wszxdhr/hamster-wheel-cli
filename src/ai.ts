@@ -79,6 +79,8 @@ export async function runAi(prompt: string, ai: AiCliConfig, logger: Logger, cwd
   const verboseCommand = ai.promptArg
     ? [ai.command, ...ai.args, ai.promptArg, '<prompt>'].join(' ')
     : [ai.command, ...ai.args, '<stdin>'].join(' ');
+  const streamPrefix = `[${ai.command}] `;
+  const streamErrorPrefix = `[${ai.command} stderr] `;
 
   let result;
   if (ai.promptArg) {
@@ -88,7 +90,12 @@ export async function runAi(prompt: string, ai: AiCliConfig, logger: Logger, cwd
       env: ai.env,
       logger,
       verboseLabel: 'ai',
-      verboseCommand
+      verboseCommand,
+      stream: {
+        enabled: true,
+        stdoutPrefix: streamPrefix,
+        stderrPrefix: streamErrorPrefix
+      }
     });
   } else {
     result = await runCommand(ai.command, args, {
@@ -97,7 +104,12 @@ export async function runAi(prompt: string, ai: AiCliConfig, logger: Logger, cwd
       input: prompt,
       logger,
       verboseLabel: 'ai',
-      verboseCommand
+      verboseCommand,
+      stream: {
+        enabled: true,
+        stdoutPrefix: streamPrefix,
+        stderrPrefix: streamErrorPrefix
+      }
     });
   }
 

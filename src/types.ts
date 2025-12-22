@@ -82,12 +82,19 @@ export interface CommandOptions {
   readonly logger?: Logger;
   readonly verboseLabel?: string;
   readonly verboseCommand?: string;
+  readonly stream?: StreamOptions;
 }
 
 export interface CommandResult {
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
+}
+
+export interface StreamOptions {
+  readonly enabled: boolean;
+  readonly stdoutPrefix?: string;
+  readonly stderrPrefix?: string;
 }
 
 export interface IterationRecord {

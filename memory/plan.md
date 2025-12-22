@@ -1,8 +1,8 @@
 # 持续迭代计划
 
-- [x] ✅ 需求澄清：日志输出需在每行前添加时间戳，覆盖 info/success/warn/error/debug 与 CLI 顶层异常输出。
-- [x] ✅ 设计与方案：在 Logger 统一格式化时间戳；补充单元测试与 CLI 帮助输出 e2e 测试；补齐 e2e 脚本。
-- [x] ✅ 开发实现：更新 Logger 与 CLI 错误输出；新增 logger 单测与 CLI e2e 测试；新增 `yarn e2e` 脚本。
-- [x] ✅ 自审：确认时间戳格式一致、输出顺序正确、无类型回退到 any。
-- [ ] 测试：运行 `yarn test` 与 `yarn e2e`，记录结果。
-- [ ] PR：准备摘要、测试结果、风险，使用 `gh` 创建 PR。
+- [x] ✅ 需求澄清：运行 AI CLI 时在 log 中实时显示其输出（stdout/stderr），每行带时间戳。
+- [x] ✅ 设计与方案：runCommand 支持流式输出；runAi 默认开启流式并使用 AI CLI 名称前缀区分输出来源。
+- [x] ✅ 开发实现：扩展命令执行能力并接入 AI CLI；新增流式输出单元测试覆盖 stdout/stderr。
+- [x] ✅ 自审：确认多行拆分与缓冲 flush 逻辑正确，不影响现有命令执行与日志级别控制。
+- [x] ✅ 测试：运行 `yarn test` 与 `yarn e2e`，记录结果（均因缺少 `ts-node/register` 失败）。
+- [ ] PR：准备摘要、测试结果、风险，使用 `gh` 创建 PR（待依赖安装与测试通过）。
