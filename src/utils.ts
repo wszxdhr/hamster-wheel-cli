@@ -2,11 +2,14 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { CommandOptions, CommandResult } from './types';
 
+type ExecaModule = typeof import('execa');
 type ExecaError = import('execa').ExecaError;
 
-async function getExeca() {
-  return import('execa');
-}
+const importExeca = async (): Promise<ExecaModule> => {
+  // 通过运行时动态 import 兼容 CommonJS 下加载 ESM 包
+  const importer = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<ExecaModule>;
+  return importer('execa');
+};
 
 export async function runCommand(command: string, args: string[], options: CommandOptions = {}): Promise<CommandResult> {
   const label = options.verboseLabel ?? 'cmd';
@@ -14,48 +17,96 @@ export async function runCommand(command: string, args: string[], options: Comma
   const cwd = options.cwd ?? process.cwd();
   options.logger?.debug(`[${label}] ${displayCmd} (cwd: ${cwd})`);
 
+  const logger = options.logger;
+  const streamEnabled = Boolean(options.stream?.enabled && logger);
+  const stdoutPrefix = options.stream?.stdoutPrefix ?? `[${label}] `;
+  const stderrPrefix = options.stream?.stderrPrefix ?? `[${label} stderr] `;
+
+  const createLineStreamer = (prefix: string) => {
+    let buffer = '';
+    const emit = (line: string): void => {
+      logger?.info(`${prefix}${line}`);
+    };
+    const push = (chunk: string | Buffer): void => {
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      buffer += text.replace(/\r/g, '\n');
+      const parts = buffer.split('\n');
+      buffer = parts.pop() ?? '';
+      parts.forEach(emit);
+    };
+    const flush = (): void => {
+      if (buffer.length === 0) return;
+      emit(buffer);
+      buffer = '';
+    };
+    return { push, flush };
+  };
+
+  const attachStream = (stream: NodeJS.ReadableStream | null | undefined, streamer: ReturnType<typeof createLineStreamer>): void => {
+    if (!stream) return;
+    if (typeof stream.setEncoding === 'function') {
+      stream.setEncoding('utf8');
+    }
+    stream.on('data', streamer.push);
+    stream.on('end', streamer.flush);
+  };
+
+  const stdoutStreamer = streamEnabled ? createLineStreamer(stdoutPrefix) : null;
+  const stderrStreamer = streamEnabled ? createLineStreamer(stderrPrefix) : null;
+
   try {
-    const { execa } = await getExeca();
-    const result = await execa(command, args, {
+    const { execa } = await importExeca();
+    const subprocess = execa(command, args, {
       cwd: options.cwd,
       env: options.env,
       input: options.input,
       all: false
     });
+    if (stdoutStreamer) {
+      attachStream(subprocess.stdout, stdoutStreamer);
+    }
+    if (stderrStreamer) {
+      attachStream(subprocess.stderr, stderrStreamer);
+    }
+    const result = await subprocess;
+    stdoutStreamer?.flush();
+    stderrStreamer?.flush();
     const commandResult: CommandResult = {
       stdout: String(result.stdout ?? ''),
       stderr: String(result.stderr ?? ''),
       exitCode: result.exitCode ?? 0
     };
-    if (options.logger) {
+    if (logger) {
       const stdout = commandResult.stdout.trim();
       const stderr = commandResult.stderr.trim();
       if (stdout.length > 0) {
-        options.logger.debug(`[${label}] stdout: ${stdout}`);
+        logger.debug(`[${label}] stdout: ${stdout}`);
       }
       if (stderr.length > 0) {
-        options.logger.debug(`[${label}] stderr: ${stderr}`);
+        logger.debug(`[${label}] stderr: ${stderr}`);
       }
-      options.logger.debug(`[${label}] exit ${commandResult.exitCode}`);
+      logger.debug(`[${label}] exit ${commandResult.exitCode}`);
     }
     return commandResult;
   } catch (error) {
     const execaError = error as ExecaError;
+    stdoutStreamer?.flush();
+    stderrStreamer?.flush();
     const commandResult: CommandResult = {
       stdout: String(execaError.stdout ?? ''),
       stderr: String(execaError.stderr ?? String(error)),
       exitCode: execaError.exitCode ?? 1
     };
-    if (options.logger) {
+    if (logger) {
       const stdout = commandResult.stdout.trim();
       const stderr = commandResult.stderr.trim();
       if (stdout.length > 0) {
-        options.logger.debug(`[${label}] stdout: ${stdout}`);
+        logger.debug(`[${label}] stdout: ${stdout}`);
       }
       if (stderr.length > 0) {
-        options.logger.debug(`[${label}] stderr: ${stderr}`);
+        logger.debug(`[${label}] stderr: ${stderr}`);
       }
-      options.logger.debug(`[${label}] exit ${commandResult.exitCode}`);
+      logger.debug(`[${label}] exit ${commandResult.exitCode}`);
     }
     return commandResult;
   }
