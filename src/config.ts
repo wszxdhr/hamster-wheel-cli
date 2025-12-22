@@ -8,7 +8,6 @@ export interface CliOptions {
   readonly aiCli: string;
   readonly aiArgs: string[];
   readonly aiPromptArg?: string;
-  readonly aiEnv: Record<string, string>;
   readonly notesFile: string;
   readonly planFile: string;
   readonly workflowDoc: string;
@@ -35,8 +34,7 @@ function buildAiConfig(options: CliOptions): AiCliConfig {
   return {
     command: options.aiCli,
     args: options.aiArgs,
-    promptArg: options.aiPromptArg,
-    env: options.aiEnv
+    promptArg: options.aiPromptArg
   };
 }
 

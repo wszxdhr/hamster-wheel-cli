@@ -39,7 +39,7 @@
 
 ## 步骤 6：推送并提交 PR
 - 检查 git 状态，准备提交信息（建议格式：`chore: <任务概要>`）。
-- 使用 `gh pr create --head <branch>` 创建 PR，正文应包含：
+- 使用 `gh pr create --head <branch> --title "<标题>" --body-file <path>`（或 `--body "<正文>"`）创建 PR，正文应包含：
   - 变更摘要（bullet 列表）
   - 测试结果（含失败原因）
   - 风险与回滚方案

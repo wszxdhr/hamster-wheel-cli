@@ -87,7 +87,6 @@ export async function runAi(prompt: string, ai: AiCliConfig, logger: Logger, cwd
     args.push(ai.promptArg, prompt);
     result = await runCommand(ai.command, args, {
       cwd,
-      env: ai.env,
       logger,
       verboseLabel: 'ai',
       verboseCommand,
@@ -100,7 +99,6 @@ export async function runAi(prompt: string, ai: AiCliConfig, logger: Logger, cwd
   } else {
     result = await runCommand(ai.command, args, {
       cwd,
-      env: ai.env,
       input: prompt,
       logger,
       verboseLabel: 'ai',

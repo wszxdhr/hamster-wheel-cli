@@ -24,12 +24,11 @@ node dist/cli.js run \
   --stop-signal "<<DONE>>"
 ```
 - `--ai-cli`/`--ai-args`：指向系统已有的 AI CLI，提示文本通过 stdin（或 `--ai-prompt-arg`）传入。
-- `--ai-env`：为 AI CLI 追加环境变量（KEY=VALUE），与当前进程环境合并。
 - `--worktree`：在独立分支 worktree 中作业；基线分支通过 `--base-branch` 指定。
 - 使用 `--worktree` 创建的临时工作目录，在确认分支已提交、推送且存在 PR 后会自动清理（仅删除本次创建的 worktree）。
 - `--run-tests`/`--run-e2e`：运行测试命令（默认 `yarn test`、`yarn e2e`）。
 - `--auto-commit`/`--auto-push`：迭代结束后自动提交与推送。
-- `--pr`：使用 `gh pr create` 创建 PR，可配合 `--pr-title`/`--pr-body`/`--draft`/`--reviewer`。
+- `--pr`：使用 `gh pr create` 创建 PR，可配合 `--pr-title`/`--pr-body`/`--draft`/`--reviewer`，未提供标题时会自动生成默认标题。
 - `-v, --verbose`：输出完整调试日志（包含执行命令、stdout/stderr），便于开发排查。
 
 ## 持久化记忆

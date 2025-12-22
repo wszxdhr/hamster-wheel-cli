@@ -4,7 +4,6 @@ export interface AiCliConfig {
   readonly command: string;
   readonly args: string[];
   readonly promptArg?: string;
-  readonly env?: Record<string, string>;
 }
 
 export interface TokenUsage {
