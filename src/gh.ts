@@ -11,10 +11,10 @@ export interface GhPrInfo {
 }
 
 export interface GhRunInfo {
-  readonly id: number;
+  readonly databaseId: number;
   readonly name: string;
   readonly status: string;
-  readonly conclusion?: string;
+  readonly conclusion?: string | null;
   readonly url: string;
 }
 
@@ -28,13 +28,48 @@ function isGhPrInfo(input: unknown): input is GhPrInfo {
     && typeof candidate.headRefName === 'string';
 }
 
-function isGhRunInfo(input: unknown): input is GhRunInfo {
-  if (typeof input !== 'object' || input === null) return false;
+function resolveRunDatabaseId(candidate: Record<string, unknown>): number | null {
+  const databaseId = candidate.databaseId;
+  if (typeof databaseId === 'number' && Number.isFinite(databaseId)) return databaseId;
+  const id = candidate.id;
+  if (typeof id === 'number' && Number.isFinite(id)) return id;
+  if (typeof id === 'string') {
+    const parsed = Number(id);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function parseGhRunInfo(input: unknown): GhRunInfo | null {
+  if (typeof input !== 'object' || input === null) return null;
   const candidate = input as Record<string, unknown>;
-  return typeof candidate.id === 'number'
-    && typeof candidate.name === 'string'
-    && typeof candidate.status === 'string'
-    && typeof candidate.url === 'string';
+  const databaseId = resolveRunDatabaseId(candidate);
+  if (databaseId === null) return null;
+  if (typeof candidate.name !== 'string') return null;
+  if (typeof candidate.status !== 'string') return null;
+  if (typeof candidate.url !== 'string') return null;
+  const conclusion = candidate.conclusion;
+  const hasValidConclusion = conclusion === undefined || conclusion === null || typeof conclusion === 'string';
+  if (!hasValidConclusion) return null;
+  return {
+    databaseId,
+    name: candidate.name,
+    status: candidate.status,
+    conclusion: conclusion ?? null,
+    url: candidate.url
+  };
+}
+
+export function parseGhRunList(output: string): GhRunInfo[] {
+  try {
+    const parsed = JSON.parse(output);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(parseGhRunInfo)
+      .filter((run): run is GhRunInfo => run !== null);
+  } catch {
+    return [];
+  }
 }
 
 export async function viewPr(branch: string, cwd: string, logger: Logger): Promise<GhPrInfo | null> {
@@ -101,11 +136,7 @@ export async function listFailedRuns(branch: string, cwd: string, logger: Logger
     return [];
   }
   try {
-    const parsed = JSON.parse(result.stdout);
-    if (!Array.isArray(parsed)) return [];
-    const runs: GhRunInfo[] = parsed
-      .filter(isGhRunInfo)
-      .map(run => ({ ...run, conclusion: run.conclusion }));
+    const runs = parseGhRunList(result.stdout);
     const failed = runs.filter(run => run.conclusion && run.conclusion !== 'success');
     if (failed.length === 0) {
       logger.info('最近 5 次 Actions 运行无失败');

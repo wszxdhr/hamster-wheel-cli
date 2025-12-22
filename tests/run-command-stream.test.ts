@@ -16,8 +16,6 @@ const outputs: string[] = [];
 
 const stripAnsi = (value: string): string => value.replace(ansiPattern, '');
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 const capture = (method: ConsoleMethodName, sink: string[]): void => {
   const writer = (...data: unknown[]): void => {
     sink.push(data.map(item => String(item)).join(' '));
@@ -26,8 +24,11 @@ const capture = (method: ConsoleMethodName, sink: string[]): void => {
 };
 
 const hasLine = (lines: string[], message: string): boolean => {
-  const pattern = new RegExp(`^${timestampPattern.source}info\\s+${escapeRegExp(message)}$`);
-  return lines.some(line => pattern.test(line));
+  return lines.some(line => {
+    if (!timestampPattern.test(line)) return false;
+    const withoutTimestamp = line.replace(timestampPattern, '');
+    return withoutTimestamp === `info  ${message}`;
+  });
 };
 
 beforeEach(() => {

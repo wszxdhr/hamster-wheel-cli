@@ -2,11 +2,14 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import { CommandOptions, CommandResult } from './types';
 
+type ExecaModule = typeof import('execa');
 type ExecaError = import('execa').ExecaError;
 
-async function getExeca() {
-  return import('execa');
-}
+const importExeca = async (): Promise<ExecaModule> => {
+  // 通过运行时动态 import 兼容 CommonJS 下加载 ESM 包
+  const importer = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<ExecaModule>;
+  return importer('execa');
+};
 
 export async function runCommand(command: string, args: string[], options: CommandOptions = {}): Promise<CommandResult> {
   const label = options.verboseLabel ?? 'cmd';
@@ -52,7 +55,7 @@ export async function runCommand(command: string, args: string[], options: Comma
   const stderrStreamer = streamEnabled ? createLineStreamer(stderrPrefix) : null;
 
   try {
-    const { execa } = await getExeca();
+    const { execa } = await importExeca();
     const subprocess = execa(command, args, {
       cwd: options.cwd,
       env: options.env,
