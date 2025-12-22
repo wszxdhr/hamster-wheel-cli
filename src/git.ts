@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { Logger } from './logger';
-import { WorktreeConfig } from './types';
+import { WorktreeConfig, WorktreeResult } from './types';
 import { runCommand, resolvePath } from './utils';
 
 async function branchExists(branch: string, cwd: string, logger?: Logger): Promise<boolean> {
@@ -53,6 +53,20 @@ export async function getCurrentBranch(cwd: string, logger?: Logger): Promise<st
   return result.stdout.trim();
 }
 
+async function getUpstreamBranch(branchName: string, cwd: string, logger?: Logger): Promise<string | null> {
+  const result = await runCommand('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branchName}@{u}`], {
+    cwd,
+    logger,
+    verboseLabel: 'git',
+    verboseCommand: `git rev-parse --abbrev-ref --symbolic-full-name ${branchName}@{u}`
+  });
+  if (result.exitCode !== 0) {
+    logger?.warn(`分支 ${branchName} 没有关联的 upstream: ${result.stderr || result.stdout}`);
+    return null;
+  }
+  return result.stdout.trim();
+}
+
 function defaultWorktreePath(repoRoot: string, branchName: string): string {
   return path.join(repoRoot, '..', 'worktrees', branchName);
 }
@@ -72,9 +86,9 @@ export async function ensureBranchExists(branchName: string, baseBranch: string,
   logger.info(`已基于 ${baseBranch} 创建分支 ${branchName}`);
 }
 
-export async function ensureWorktree(config: WorktreeConfig, repoRoot: string, logger: Logger): Promise<string> {
+export async function ensureWorktree(config: WorktreeConfig, repoRoot: string, logger: Logger): Promise<WorktreeResult> {
   if (!config.useWorktree) {
-    return repoRoot;
+    return { path: repoRoot, created: false };
   }
 
   const branchName = config.branchName ?? generateBranchName();
@@ -90,15 +104,58 @@ export async function ensureWorktree(config: WorktreeConfig, repoRoot: string, l
     verboseCommand: `git worktree add ${worktreePath} ${branchName}`
   });
   if (addResult.exitCode !== 0) {
-    if (addResult.stderr.includes('already exists')) {
+    const alreadyExists = addResult.stderr.includes('already exists') || addResult.stdout.includes('already exists');
+    if (alreadyExists) {
       logger.warn(`worktree 路径已存在，跳过创建: ${worktreePath}`);
-      return worktreePath;
+      return { path: worktreePath, created: false };
     }
-    throw new Error(`创建 worktree 失败: ${addResult.stderr}`);
+    throw new Error(`创建 worktree 失败: ${addResult.stderr || addResult.stdout}`);
   }
 
   logger.success(`已在 ${worktreePath} 创建并挂载 worktree (${branchName})`);
-  return worktreePath;
+  return { path: worktreePath, created: true };
+}
+
+export async function isWorktreeClean(cwd: string, logger?: Logger): Promise<boolean> {
+  const status = await runCommand('git', ['status', '--porcelain'], {
+    cwd,
+    logger,
+    verboseLabel: 'git',
+    verboseCommand: 'git status --porcelain'
+  });
+  if (status.exitCode !== 0) {
+    logger?.warn(`无法获取 git 状态: ${status.stderr || status.stdout}`);
+    return false;
+  }
+  return status.stdout.trim().length === 0;
+}
+
+export async function isBranchPushed(branchName: string, cwd: string, logger: Logger): Promise<boolean> {
+  const upstream = await getUpstreamBranch(branchName, cwd, logger);
+  if (!upstream) return false;
+
+  const countResult = await runCommand('git', ['rev-list', '--left-right', '--count', `${upstream}...${branchName}`], {
+    cwd,
+    logger,
+    verboseLabel: 'git',
+    verboseCommand: `git rev-list --left-right --count ${upstream}...${branchName}`
+  });
+  if (countResult.exitCode !== 0) {
+    logger.warn(`无法比较分支 ${branchName} 与 ${upstream}: ${countResult.stderr || countResult.stdout}`);
+    return false;
+  }
+
+  const [behindStr, aheadStr] = countResult.stdout.trim().split(/\s+/);
+  const ahead = Number.parseInt(aheadStr ?? '0', 10);
+  if (Number.isNaN(ahead)) {
+    logger.warn(`无法解析分支推送状态: ${countResult.stdout}`);
+    return false;
+  }
+  if (ahead > 0) {
+    logger.warn(`分支 ${branchName} 仍有 ${ahead} 个本地提交未推送`);
+    return false;
+  }
+  return true;
 }
 
 export async function commitAll(message: string, cwd: string, logger: Logger): Promise<void> {
@@ -135,6 +192,30 @@ export async function pushBranch(branchName: string, cwd: string, logger: Logger
     throw new Error(`git push 失败: ${push.stderr}`);
   }
   logger.success(`已推送分支 ${branchName}`);
+}
+
+export async function removeWorktree(worktreePath: string, repoRoot: string, logger: Logger): Promise<void> {
+  const remove = await runCommand('git', ['worktree', 'remove', '--force', worktreePath], {
+    cwd: repoRoot,
+    logger,
+    verboseLabel: 'git',
+    verboseCommand: `git worktree remove --force ${worktreePath}`
+  });
+  if (remove.exitCode !== 0) {
+    throw new Error(`删除 worktree 失败: ${remove.stderr || remove.stdout}`);
+  }
+
+  const prune = await runCommand('git', ['worktree', 'prune'], {
+    cwd: repoRoot,
+    logger,
+    verboseLabel: 'git',
+    verboseCommand: 'git worktree prune'
+  });
+  if (prune.exitCode !== 0) {
+    logger.warn(`worktree prune 失败: ${prune.stderr || prune.stdout}`);
+  }
+
+  logger.success(`已删除 worktree: ${worktreePath}`);
 }
 
 export function generateBranchName(): string {

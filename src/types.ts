@@ -25,6 +25,11 @@ export interface WorktreeConfig {
   readonly baseBranch: string;
 }
 
+export interface WorktreeResult {
+  readonly path: string;
+  readonly created: boolean;
+}
+
 export interface TestConfig {
   readonly unitCommand?: string;
   readonly e2eCommand?: string;

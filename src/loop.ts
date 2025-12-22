@@ -1,10 +1,10 @@
 import fs from 'fs-extra';
 import path from 'node:path';
 import { buildPrompt, formatIterationRecord, mergeTokenUsage, runAi } from './ai';
-import { createPr, listFailedRuns, viewPr } from './gh';
+import { GhPrInfo, createPr, listFailedRuns, viewPr } from './gh';
 import { Logger } from './logger';
-import { commitAll, ensureWorktree, getCurrentBranch, getRepoRoot, pushBranch } from './git';
-import { LoopConfig, TestRunResult, TokenUsage, WorkflowFiles } from './types';
+import { commitAll, ensureWorktree, getCurrentBranch, getRepoRoot, isBranchPushed, isWorktreeClean, pushBranch, removeWorktree } from './git';
+import { LoopConfig, TestRunResult, TokenUsage, WorkflowFiles, WorktreeResult } from './types';
 import { appendSection, ensureFile, isoNow, readFileSafe, runCommand } from './utils';
 
 async function ensureWorkflowFiles(workflowFiles: WorkflowFiles): Promise<void> {
@@ -93,14 +93,60 @@ async function writePrBody(bodyPath: string, notes: string, plan: string): Promi
   await fs.writeFile(bodyPath, lines.join('\n\n'), 'utf8');
 }
 
+interface WorktreeCleanupContext {
+  readonly repoRoot: string;
+  readonly workDir: string;
+  readonly branchName?: string;
+  readonly prInfo: GhPrInfo | null;
+  readonly worktreeCreated: boolean;
+  readonly logger: Logger;
+}
+
+async function cleanupWorktreeIfSafe(context: WorktreeCleanupContext): Promise<void> {
+  const { repoRoot, workDir, branchName, prInfo, worktreeCreated, logger } = context;
+  if (!worktreeCreated) {
+    logger.debug('worktree 并非本次创建，跳过自动清理');
+    return;
+  }
+  if (workDir === repoRoot) {
+    logger.debug('当前未使用独立 worktree，跳过自动清理');
+    return;
+  }
+  if (!branchName) {
+    logger.warn('未能确定 worktree 分支名，保留工作目录以免丢失进度');
+    return;
+  }
+
+  const clean = await isWorktreeClean(workDir, logger);
+  if (!clean) {
+    logger.warn('worktree 仍有未提交变更，已保留工作目录');
+    return;
+  }
+
+  const pushed = await isBranchPushed(branchName, workDir, logger);
+  if (!pushed) {
+    logger.warn(`分支 ${branchName} 尚未推送到远端，已保留 worktree`);
+    return;
+  }
+
+  if (!prInfo) {
+    logger.warn('未检测到关联 PR，已保留 worktree');
+    return;
+  }
+
+  await removeWorktree(workDir, repoRoot, logger);
+}
+
 export async function runLoop(config: LoopConfig): Promise<void> {
   const logger = new Logger({ verbose: config.verbose });
   const repoRoot = await getRepoRoot(config.cwd, logger);
   logger.debug(`仓库根目录: ${repoRoot}`);
 
-  const workDir = config.git.useWorktree
+  const worktreeResult: WorktreeResult = config.git.useWorktree
     ? await ensureWorktree(config.git, repoRoot, logger)
-    : repoRoot;
+    : { path: repoRoot, created: false };
+  const workDir = worktreeResult.path;
+  const worktreeCreated = worktreeResult.created;
   logger.debug(`工作目录: ${workDir}`);
 
   const workflowFiles = reRootWorkflowFiles(config.workflowFiles, repoRoot, workDir);
@@ -118,6 +164,7 @@ export async function runLoop(config: LoopConfig): Promise<void> {
 
   let accumulatedUsage: TokenUsage | null = null;
   let lastTestResults: TestRunResult[] | null = null;
+  let prInfo: GhPrInfo | null = null;
   let prFailed = false;
 
   for (let i = 1; i <= config.iterations; i += 1) {
@@ -208,9 +255,10 @@ export async function runLoop(config: LoopConfig): Promise<void> {
     const plan = await readFileSafe(workflowFiles.planFile);
     await writePrBody(bodyFile, notes, plan);
 
-    const prInfo = await createPr(branchName, { ...config.pr, bodyPath: bodyFile }, workDir, logger);
-    if (prInfo) {
-      logger.success(`PR 已创建: ${prInfo.url}`);
+    const createdPr = await createPr(branchName, { ...config.pr, bodyPath: bodyFile }, workDir, logger);
+    prInfo = createdPr;
+    if (createdPr) {
+      logger.success(`PR 已创建: ${createdPr.url}`);
       const failedRuns = await listFailedRuns(branchName, workDir, logger);
       if (failedRuns.length > 0) {
         failedRuns.forEach(run => {
@@ -223,8 +271,9 @@ export async function runLoop(config: LoopConfig): Promise<void> {
     }
   } else if (branchName && !config.pr.enable) {
     logger.info('未开启 PR 创建（--pr 未传），尝试查看已有 PR');
-    const prInfo = await viewPr(branchName, workDir, logger);
-    if (prInfo) logger.info(`已有 PR: ${prInfo.url}`);
+    const existingPr = await viewPr(branchName, workDir, logger);
+    prInfo = existingPr;
+    if (existingPr) logger.info(`已有 PR: ${existingPr.url}`);
   }
 
   if (accumulatedUsage) {
@@ -237,6 +286,17 @@ export async function runLoop(config: LoopConfig): Promise<void> {
 
   if (lastTestFailed || prFailed) {
     throw new Error('流程存在未解决的问题（测试未通过或 PR 创建失败）');
+  }
+
+  if (config.git.useWorktree && workDir !== repoRoot) {
+    await cleanupWorktreeIfSafe({
+      repoRoot,
+      workDir,
+      branchName,
+      prInfo,
+      worktreeCreated,
+      logger
+    });
   }
 
   logger.success(`fuxi 迭代流程结束｜Token 总计 ${accumulatedUsage?.totalTokens ?? '未知'}`);
