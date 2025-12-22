@@ -1,3 +1,5 @@
+import type { Logger } from './logger';
+
 export interface AiCliConfig {
   readonly command: string;
   readonly args: string[];
@@ -15,6 +17,15 @@ export interface WorktreeConfig {
 export interface TestConfig {
   readonly unitCommand?: string;
   readonly e2eCommand?: string;
+}
+
+export interface TestRunResult {
+  readonly kind: 'unit' | 'e2e';
+  readonly command: string;
+  readonly success: boolean;
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
 }
 
 export interface PrConfig {
@@ -52,6 +63,9 @@ export interface CommandOptions {
   readonly cwd?: string;
   readonly env?: Record<string, string>;
   readonly input?: string;
+  readonly logger?: Logger;
+  readonly verboseLabel?: string;
+  readonly verboseCommand?: string;
 }
 
 export interface CommandResult {
@@ -65,4 +79,5 @@ export interface IterationRecord {
   readonly prompt: string;
   readonly aiOutput: string;
   readonly timestamp: string;
+  readonly testResults?: TestRunResult[];
 }
