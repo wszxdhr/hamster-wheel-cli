@@ -8,6 +8,20 @@ async function branchExists(branch: string, cwd: string): Promise<boolean> {
   return result.exitCode === 0;
 }
 
+async function resolveBaseBranch(baseBranch: string, repoRoot: string, logger: Logger): Promise<string> {
+  const baseExists = await branchExists(baseBranch, repoRoot);
+  if (baseExists) return baseBranch;
+
+  const current = await getCurrentBranch(repoRoot);
+  const currentExists = await branchExists(current, repoRoot);
+  if (currentExists) {
+    logger.warn(`基线分支 ${baseBranch} 不存在，改用当前分支 ${current} 作为基线`);
+    return current;
+  }
+
+  throw new Error(`基线分支 ${baseBranch} 不存在，且无法确定可用的当前分支`);
+}
+
 export async function getRepoRoot(cwd: string): Promise<string> {
   const result = await runCommand('git', ['rev-parse', '--show-toplevel'], { cwd });
   if (result.exitCode !== 0) {
@@ -44,9 +58,10 @@ export async function ensureWorktree(config: WorktreeConfig, repoRoot: string, l
   }
 
   const branchName = config.branchName ?? generateBranchName();
+  const baseBranch = await resolveBaseBranch(config.baseBranch, repoRoot, logger);
   const worktreePath = resolvePath(repoRoot, config.worktreePath ?? defaultWorktreePath(repoRoot, branchName));
 
-  await ensureBranchExists(branchName, config.baseBranch, repoRoot, logger);
+  await ensureBranchExists(branchName, baseBranch, repoRoot, logger);
 
   const addResult = await runCommand('git', ['worktree', 'add', worktreePath, branchName], { cwd: repoRoot });
   if (addResult.exitCode !== 0) {
