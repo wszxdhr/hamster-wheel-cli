@@ -29,6 +29,7 @@ node dist/cli.js run \
 - `--run-tests`/`--run-e2e`：运行测试命令（默认 `yarn test`、`yarn e2e`）。
 - `--auto-commit`/`--auto-push`：迭代结束后自动提交与推送。
 - `--pr`：使用 `gh pr create` 创建 PR，可配合 `--pr-title`/`--pr-body`/`--draft`/`--reviewer`，未提供标题时会自动生成默认标题。
+- `--log-file`：将日志写入指定文件（相对路径基于当前工作目录）。
 - `-v, --verbose`：输出完整调试日志（包含执行命令、stdout/stderr），便于开发排查。
 
 ## 全局配置快捷指令

@@ -67,6 +67,7 @@ export interface LoopConfig {
   readonly tests: TestConfig;
   readonly pr: PrConfig;
   readonly cwd: string;
+  readonly logFile?: string;
   readonly verbose: boolean;
   readonly runTests: boolean;
   readonly runE2e: boolean;
