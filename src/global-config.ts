@@ -22,7 +22,7 @@ export interface GlobalConfig {
  * 获取全局配置文件路径。
  */
 export function getGlobalConfigPath(): string {
-  return path.join(os.homedir(), '.hamster-wheel-cli', 'config.toml');
+  return path.join(os.homedir(), '.wheel-ai', 'config.toml');
 }
 
 function stripTomlComment(line: string): string {

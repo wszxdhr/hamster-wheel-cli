@@ -17,7 +17,7 @@ node dist/cli.js run \
   --ai-args "--model" "claude-3-opus" \
   --worktree \
   --base-branch main \
-  --branch hamster-wheel-cli/ci-upgrade \
+  --branch wheel-ai/ci-upgrade \
   --run-tests --run-e2e \
   --auto-commit --auto-push \
   --pr --pr-title "chore: 自动化 CI" \
@@ -36,7 +36,7 @@ node dist/cli.js run \
 - `--webhook-timeout`：webhook 请求超时（毫秒），默认 8000。
 
 ## 全局配置快捷指令
-支持在 `~/.hamster-wheel-cli/config.toml` 配置一个快捷指令，用于减少重复的命令行参数书写。
+支持在 `~/.wheel-ai/config.toml` 配置一个快捷指令，用于减少重复的命令行参数书写。
 
 ```toml
 [shortcut]
@@ -46,11 +46,11 @@ command = "--task \"补充文档\" --ai-cli \"claude\" --ai-args \"--model\" \"c
 
 使用时只需要输入快捷指令名称，后续参数会追加到快捷指令命令尾部：
 ```bash
-hamster-wheel-cli daily --run-e2e
+wheel-ai daily --run-e2e
 ```
 等价于：
 ```bash
-hamster-wheel-cli run --task "补充文档" --ai-cli "claude" --ai-args "--model" "claude-3-opus" --worktree --run-tests --run-e2e
+wheel-ai run --task "补充文档" --ai-cli "claude" --ai-args "--model" "claude-3-opus" --worktree --run-tests --run-e2e
 ```
 
 - `command` 中可选包含 `run`，会在展开时自动去除，避免重复。

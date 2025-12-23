@@ -3,8 +3,16 @@
   "version": "0.1.0",
   "description": "基于 AI CLI 的持续迭代开发工具，封装工作流、git worktree 与 gh PR 协作",
   "main": "dist/index.js",
+  "keywords": [
+    "wheel-ai",
+    "ai",
+    "cli",
+    "continuous-integration",
+    "continuous-delivery",
+    "continuous-deployment"
+  ],
   "bin": {
-    "hamster-wheel-cli": "dist/cli.js"
+    "wheel-ai": "dist/cli.js"
   },
   "repository": "git@github.com:wszxdhr/hamster-wheel-cli.git",
   "author": "ZX <wszxdhr@126.com>",
@@ -14,7 +22,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsup",
+    "build:all": "tsup",
     "dev": "ts-node src/cli.ts",
     "start": "node dist/cli.js",
     "test": "node --test --require ts-node/register tests/*.test.ts",

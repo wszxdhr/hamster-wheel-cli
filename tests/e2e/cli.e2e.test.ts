@@ -14,7 +14,7 @@ test('CLI 帮助信息可正常输出', async () => {
     }
   });
 
-  assert.ok(stdout.includes('Usage: hamster-wheel-cli run'));
+  assert.ok(stdout.includes('Usage: wheel-ai run'));
   assert.ok(!stdout.includes('--ai-env-file'));
   assert.ok(!stdout.includes('--ai-env'));
   assert.ok(stdout.includes('--log-file'));
@@ -34,7 +34,7 @@ test('CLI monitor 帮助信息可正常输出', async () => {
     }
   });
 
-  assert.ok(stdout.includes('Usage: hamster-wheel-cli monitor'));
+  assert.ok(stdout.includes('Usage: wheel-ai monitor'));
 });
 
 test('CLI monitor 在非 TTY 下输出提示', async () => {
@@ -60,7 +60,7 @@ test('CLI logs 帮助信息可正常输出', async () => {
     }
   });
 
-  assert.ok(stdout.includes('Usage: hamster-wheel-cli logs'));
+  assert.ok(stdout.includes('Usage: wheel-ai logs'));
 });
 
 test('CLI logs 在非 TTY 下输出提示', async () => {
