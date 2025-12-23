@@ -22,6 +22,7 @@ test('CLI 帮助信息可正常输出', async () => {
   assert.ok(stdout.includes('--skip-install'));
   assert.ok(stdout.includes('--webhook'));
   assert.ok(stdout.includes('--webhook-timeout'));
+  assert.ok(stdout.includes('--multi-task-mode'));
 });
 
 test('CLI monitor 帮助信息可正常输出', async () => {
