@@ -3,15 +3,24 @@ import path from 'node:path';
 import fs from 'fs-extra';
 import type { Logger } from './logger';
 
+/**
+ * 全局快捷指令配置。
+ */
 export interface ShortcutConfig {
   readonly name: string;
   readonly command: string;
 }
 
+/**
+ * 全局配置结构。
+ */
 export interface GlobalConfig {
   readonly shortcut?: ShortcutConfig;
 }
 
+/**
+ * 获取全局配置文件路径。
+ */
 export function getGlobalConfigPath(): string {
   return path.join(os.homedir(), '.fuxi', 'config.toml');
 }
@@ -138,6 +147,9 @@ function normalizeShortcutName(name: string): string | null {
   return trimmed;
 }
 
+/**
+ * 解析全局 TOML 配置文本。
+ */
 export function parseGlobalConfig(content: string): GlobalConfig {
   const lines = content.split(/\r?\n/);
   let currentSection: string | null = null;
@@ -182,6 +194,9 @@ export function parseGlobalConfig(content: string): GlobalConfig {
   };
 }
 
+/**
+ * 读取用户目录下的全局配置。
+ */
 export async function loadGlobalConfig(logger?: Logger): Promise<GlobalConfig | null> {
   const filePath = getGlobalConfigPath();
   const exists = await fs.pathExists(filePath);
@@ -197,6 +212,9 @@ export async function loadGlobalConfig(logger?: Logger): Promise<GlobalConfig | 
   }
 }
 
+/**
+ * 将命令行字符串拆解为参数数组（支持引号与转义）。
+ */
 export function splitCommandArgs(command: string): string[] {
   const args: string[] = [];
   let current = '';
@@ -259,6 +277,9 @@ function normalizeShortcutArgs(args: string[]): string[] {
   return args;
 }
 
+/**
+ * 应用全局快捷指令，将别名替换为 run 子命令参数。
+ */
 export function applyShortcutArgv(argv: string[], config: GlobalConfig | null): string[] {
   if (!config?.shortcut) return argv;
   if (argv.length < 3) return argv;

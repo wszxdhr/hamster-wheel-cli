@@ -2,6 +2,9 @@ import path from 'node:path';
 import { AiCliConfig, LoopConfig, PrConfig, TestConfig, WorktreeConfig, WorkflowFiles } from './types';
 import { resolvePath } from './utils';
 
+/**
+ * CLI 参数解析后的配置。
+ */
 export interface CliOptions {
   readonly task: string;
   readonly iterations: number;
@@ -29,6 +32,7 @@ export interface CliOptions {
   readonly stopSignal: string;
   readonly logFile?: string;
   readonly verbose: boolean;
+  readonly skipInstall: boolean;
 }
 
 function buildAiConfig(options: CliOptions): AiCliConfig {
@@ -73,6 +77,9 @@ function buildWorkflowFiles(options: CliOptions, cwd: string): WorkflowFiles {
   };
 }
 
+/**
+ * 构建循环执行所需的配置对象。
+ */
 export function buildLoopConfig(options: CliOptions, cwd: string): LoopConfig {
   return {
     task: options.task,
@@ -89,18 +96,28 @@ export function buildLoopConfig(options: CliOptions, cwd: string): LoopConfig {
     runTests: options.runTests,
     runE2e: options.runE2e,
     autoCommit: options.autoCommit,
-    autoPush: options.autoPush
+    autoPush: options.autoPush,
+    skipInstall: options.skipInstall
   };
 }
 
+/**
+ * 默认 notes 文件路径。
+ */
 export function defaultNotesPath(): string {
   return path.join('memory', 'notes.md');
 }
 
+/**
+ * 默认 plan 文件路径。
+ */
 export function defaultPlanPath(): string {
   return path.join('memory', 'plan.md');
 }
 
+/**
+ * 默认工作流说明文件路径。
+ */
 export function defaultWorkflowDoc(): string {
   return path.join('docs', 'ai-workflow.md');
 }

@@ -10,6 +10,9 @@ interface PromptInput {
   readonly iteration: number;
 }
 
+/**
+ * 构建 AI 提示文本。
+ */
 export function buildPrompt(input: PromptInput): string {
   const sections = [
     '# 背景任务',
@@ -43,6 +46,9 @@ function pickNumber(pattern: RegExp, text: string): number | undefined {
   return Number.isNaN(value) ? undefined : value;
 }
 
+/**
+ * 从日志文本中解析 token 使用量。
+ */
 export function parseTokenUsage(logs: string): TokenUsage | null {
   const total = pickNumber(/total[_\s]tokens:\s*(\d+)/i, logs);
   const input = pickNumber(/(input|prompt)[_\s]tokens:\s*(\d+)/i, logs);
@@ -64,6 +70,9 @@ function addOptional(a?: number, b?: number): number | undefined {
   return (a ?? 0) + (b ?? 0);
 }
 
+/**
+ * 合并多轮 token 统计。
+ */
 export function mergeTokenUsage(previous: TokenUsage | null, current?: TokenUsage | null): TokenUsage | null {
   if (!current) return previous;
   if (!previous) return { ...current };
@@ -74,6 +83,9 @@ export function mergeTokenUsage(previous: TokenUsage | null, current?: TokenUsag
   };
 }
 
+/**
+ * 调用 AI CLI 并返回输出。
+ */
 export async function runAi(prompt: string, ai: AiCliConfig, logger: Logger, cwd: string): Promise<AiResult> {
   const args = [...ai.args];
   const verboseCommand = ai.promptArg
@@ -123,6 +135,9 @@ export async function runAi(prompt: string, ai: AiCliConfig, logger: Logger, cwd
   };
 }
 
+/**
+ * 生成 notes 迭代记录文本。
+ */
 export function formatIterationRecord(record: IterationRecord): string {
   const lines = [
     `### 迭代 ${record.iteration} ｜ ${record.timestamp}`,

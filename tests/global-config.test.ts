@@ -7,7 +7,7 @@ test('parseGlobalConfig 读取 shortcut 配置', () => {
 # comment
 [shortcut]
 name = "daily"
-command = "--task \\"修复 #123\\" --run-tests" # inline comment
+command = "--task \\\"修复 #123\\\" --run-tests" # inline comment
 `;
   const config = parseGlobalConfig(content);
   assert.deepEqual(config, {
@@ -36,7 +36,7 @@ test('applyShortcutArgv 展开快捷指令并追加参数', () => {
   const config = parseGlobalConfig(`
 [shortcut]
 name = "daily"
-command = "run --task \\"demo\\" --run-tests"
+command = "run --task \\\"demo\\\" --run-tests"
 `);
   const argv = ['node', '/path/cli.js', 'daily', '--run-e2e'];
   const result = applyShortcutArgv(argv, config);

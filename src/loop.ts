@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'node:path';
 import { buildPrompt, formatIterationRecord, mergeTokenUsage, runAi } from './ai';
+import { ensureDependencies } from './deps';
 import { GhPrInfo, createPr, listFailedRuns, viewPr } from './gh';
 import { Logger } from './logger';
 import { commitAll, ensureWorktree, getCurrentBranch, getRepoRoot, isBranchPushed, isWorktreeClean, pushBranch, removeWorktree } from './git';
@@ -154,6 +155,9 @@ async function cleanupWorktreeIfSafe(context: WorktreeCleanupContext): Promise<v
   await removeWorktree(workDir, repoRoot, logger);
 }
 
+/**
+ * 执行主迭代循环。
+ */
 export async function runLoop(config: LoopConfig): Promise<void> {
   const logger = new Logger({ verbose: config.verbose, logFile: config.logFile });
   const repoRoot = await getRepoRoot(config.cwd, logger);
@@ -165,6 +169,12 @@ export async function runLoop(config: LoopConfig): Promise<void> {
   const workDir = worktreeResult.path;
   const worktreeCreated = worktreeResult.created;
   logger.debug(`工作目录: ${workDir}`);
+
+  if (config.skipInstall) {
+    logger.info('已跳过依赖检查');
+  } else {
+    await ensureDependencies(workDir, logger);
+  }
 
   const workflowFiles = reRootWorkflowFiles(config.workflowFiles, repoRoot, workDir);
   await ensureWorkflowFiles(workflowFiles);

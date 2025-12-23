@@ -1,5 +1,8 @@
 import { DeliverySummary, TestRunResult } from './types';
 
+/**
+ * 生成交付摘要提示的输入。
+ */
 export interface SummaryPromptInput {
   readonly task: string;
   readonly plan: string;
@@ -11,11 +14,17 @@ export interface SummaryPromptInput {
   readonly branchName?: string;
 }
 
+/**
+ * 兜底摘要输入。
+ */
 export interface SummaryFallbackInput {
   readonly task: string;
   readonly testResults: TestRunResult[] | null;
 }
 
+/**
+ * PR 文案兜底输入。
+ */
 export interface PrBodyFallbackInput {
   readonly commitTitle: string;
   readonly commitBody?: string;
@@ -83,6 +92,9 @@ function buildPrBody(summaryLines: string[], testLines: string[]): string {
   ].join('\n');
 }
 
+/**
+ * 构建交付摘要提示词。
+ */
 export function buildSummaryPrompt(input: SummaryPromptInput): string {
   const planSnippet = trimTail(input.plan, 2000, '（计划为空）');
   const notesSnippet = trimTail(input.notes, 4000, '（notes 为空）');
@@ -163,6 +175,9 @@ function extractBulletLines(text?: string | null): string[] {
   return bullets.map(line => (line.startsWith('* ') ? `- ${line.slice(2).trim()}` : line));
 }
 
+/**
+ * 解析 AI 输出的交付摘要 JSON。
+ */
 export function parseDeliverySummary(output: string): DeliverySummary | null {
   const jsonText = extractJson(output);
   if (!jsonText) return null;
@@ -207,6 +222,9 @@ export function parseDeliverySummary(output: string): DeliverySummary | null {
   }
 }
 
+/**
+ * 构建兜底交付摘要。
+ */
 export function buildFallbackSummary(input: SummaryFallbackInput): DeliverySummary {
   const taskLine = compactLine(input.task);
   const shortTask = taskLine.length > 50 ? `${taskLine.slice(0, 50)}...` : taskLine;
@@ -223,6 +241,9 @@ export function buildFallbackSummary(input: SummaryFallbackInput): DeliverySumma
   };
 }
 
+/**
+ * 确保 PR 文案包含必要章节。
+ */
 export function ensurePrBodySections(prBody: string, fallback: PrBodyFallbackInput): string {
   const normalized = normalizeText(prBody).trim();
   const hasAll = REQUIRED_SECTIONS.every(section => normalized.includes(section));

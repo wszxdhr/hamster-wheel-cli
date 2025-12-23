@@ -18,4 +18,5 @@ test('CLI 帮助信息可正常输出', async () => {
   assert.ok(!stdout.includes('--ai-env-file'));
   assert.ok(!stdout.includes('--ai-env'));
   assert.ok(stdout.includes('--log-file'));
+  assert.ok(stdout.includes('--skip-install'));
 });

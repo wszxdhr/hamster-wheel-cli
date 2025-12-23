@@ -27,6 +27,9 @@ async function resolveBaseBranch(baseBranch: string, repoRoot: string, logger: L
   throw new Error(`基线分支 ${baseBranch} 不存在，且无法确定可用的当前分支`);
 }
 
+/**
+ * 获取仓库根目录。
+ */
 export async function getRepoRoot(cwd: string, logger?: Logger): Promise<string> {
   const result = await runCommand('git', ['rev-parse', '--show-toplevel'], {
     cwd,
@@ -40,6 +43,9 @@ export async function getRepoRoot(cwd: string, logger?: Logger): Promise<string>
   return result.stdout.trim();
 }
 
+/**
+ * 获取当前分支名。
+ */
 export async function getCurrentBranch(cwd: string, logger?: Logger): Promise<string> {
   const result = await runCommand('git', ['branch', '--show-current'], {
     cwd,
@@ -71,6 +77,9 @@ function defaultWorktreePath(repoRoot: string, branchName: string): string {
   return path.join(repoRoot, '..', 'worktrees', branchName);
 }
 
+/**
+ * 确保目标分支存在。
+ */
 export async function ensureBranchExists(branchName: string, baseBranch: string, repoRoot: string, logger: Logger): Promise<void> {
   const exists = await branchExists(branchName, repoRoot, logger);
   if (exists) return;
@@ -86,6 +95,9 @@ export async function ensureBranchExists(branchName: string, baseBranch: string,
   logger.info(`已基于 ${baseBranch} 创建分支 ${branchName}`);
 }
 
+/**
+ * 根据配置创建或复用 worktree。
+ */
 export async function ensureWorktree(config: WorktreeConfig, repoRoot: string, logger: Logger): Promise<WorktreeResult> {
   if (!config.useWorktree) {
     return { path: repoRoot, created: false };
@@ -116,6 +128,9 @@ export async function ensureWorktree(config: WorktreeConfig, repoRoot: string, l
   return { path: worktreePath, created: true };
 }
 
+/**
+ * 判断 worktree 是否干净。
+ */
 export async function isWorktreeClean(cwd: string, logger?: Logger): Promise<boolean> {
   const status = await runCommand('git', ['status', '--porcelain'], {
     cwd,
@@ -130,6 +145,9 @@ export async function isWorktreeClean(cwd: string, logger?: Logger): Promise<boo
   return status.stdout.trim().length === 0;
 }
 
+/**
+ * 判断分支是否已推送到远端。
+ */
 export async function isBranchPushed(branchName: string, cwd: string, logger: Logger): Promise<boolean> {
   const upstream = await getUpstreamBranch(branchName, cwd, logger);
   if (!upstream) return false;
@@ -188,6 +206,9 @@ function buildCommitArgs(message: CommitMessage): string[] {
   return args;
 }
 
+/**
+ * 提交当前变更。
+ */
 export async function commitAll(message: CommitMessage, cwd: string, logger: Logger): Promise<void> {
   const add = await runCommand('git', ['add', '-A'], {
     cwd,
@@ -211,6 +232,9 @@ export async function commitAll(message: CommitMessage, cwd: string, logger: Log
   logger.success('已提交当前变更');
 }
 
+/**
+ * 推送分支到远端。
+ */
 export async function pushBranch(branchName: string, cwd: string, logger: Logger): Promise<void> {
   const push = await runCommand('git', ['push', '-u', 'origin', branchName], {
     cwd,
@@ -224,6 +248,9 @@ export async function pushBranch(branchName: string, cwd: string, logger: Logger
   logger.success(`已推送分支 ${branchName}`);
 }
 
+/**
+ * 删除 worktree 并清理。
+ */
 export async function removeWorktree(worktreePath: string, repoRoot: string, logger: Logger): Promise<void> {
   const remove = await runCommand('git', ['worktree', 'remove', '--force', worktreePath], {
     cwd: repoRoot,
@@ -248,6 +275,9 @@ export async function removeWorktree(worktreePath: string, repoRoot: string, log
   logger.success(`已删除 worktree: ${worktreePath}`);
 }
 
+/**
+ * 生成默认分支名。
+ */
 export function generateBranchName(): string {
   const now = new Date();
   const stamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;

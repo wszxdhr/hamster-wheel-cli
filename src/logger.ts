@@ -14,11 +14,17 @@ const colors = {
   gray: wrap('90')
 } as const;
 
+/**
+ * 日志器配置项。
+ */
 export interface LoggerOptions {
   readonly verbose?: boolean;
   readonly logFile?: string;
 }
 
+/**
+ * 带颜色的日志输出器，可选写入日志文件。
+ */
 export class Logger {
   private readonly verbose: boolean;
   private readonly logFile?: string;
@@ -113,4 +119,7 @@ export class Logger {
   }
 }
 
+/**
+ * 默认日志器实例。
+ */
 export const defaultLogger = new Logger();
