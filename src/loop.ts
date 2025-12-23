@@ -138,7 +138,7 @@ async function cleanupWorktreeIfSafe(context: WorktreeCleanupContext): Promise<v
 }
 
 export async function runLoop(config: LoopConfig): Promise<void> {
-  const logger = new Logger({ verbose: config.verbose });
+  const logger = new Logger({ verbose: config.verbose, logFile: config.logFile });
   const repoRoot = await getRepoRoot(config.cwd, logger);
   logger.debug(`仓库根目录: ${repoRoot}`);
 

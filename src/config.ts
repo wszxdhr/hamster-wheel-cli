@@ -27,6 +27,7 @@ export interface CliOptions {
   readonly draft: boolean;
   readonly reviewers?: string[];
   readonly stopSignal: string;
+  readonly logFile?: string;
   readonly verbose: boolean;
 }
 
@@ -83,6 +84,7 @@ export function buildLoopConfig(options: CliOptions, cwd: string): LoopConfig {
     tests: buildTestConfig(options),
     pr: buildPrConfig(options),
     cwd,
+    logFile: options.logFile ? resolvePath(cwd, options.logFile) : undefined,
     verbose: options.verbose,
     runTests: options.runTests,
     runE2e: options.runE2e,

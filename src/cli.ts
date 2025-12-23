@@ -50,6 +50,7 @@ export async function runCli(argv: string[]): Promise<void> {
     .option('--draft', '以草稿形式创建 PR', false)
     .option('--reviewer <user...>', 'PR reviewers', collect, [])
     .option('--stop-signal <token>', 'AI 输出中的停止标记', '<<DONE>>')
+    .option('--log-file <path>', '日志输出文件路径')
     .option('-v, --verbose', '输出调试日志', false)
     .action(async (options) => {
       const cliOptions: CliOptions = {
@@ -77,6 +78,7 @@ export async function runCli(argv: string[]): Promise<void> {
         draft: Boolean(options.draft),
         reviewers: (options.reviewer as string[]) ?? [],
         stopSignal: options.stopSignal as string,
+        logFile: options.logFile as string | undefined,
         verbose: Boolean(options.verbose)
       };
 
