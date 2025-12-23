@@ -115,12 +115,19 @@ export function buildPrCreateArgs(branch: string, config: PrConfig): string[] {
 export function isPrAlreadyExistsMessage(output: string): boolean {
   const trimmed = output.trim();
   if (!trimmed) return false;
-  const lower = trimmed.toLowerCase();
-  if (lower.includes('pull request already exists')) return true;
-  if (lower.includes('already exists') && /\bpr\b/i.test(trimmed)) return true;
-  if (trimmed.includes('已存在') && (trimmed.includes('拉取请求') || trimmed.includes('合并请求') || /\bpr\b/i.test(trimmed))) {
-    return true;
-  }
+  const ghPattern =
+    /a pull request for branch ["']?[^"']+["']? into branch ["']?[^"']+["']? already exists/i;
+  if (ghPattern.test(trimmed)) return true;
+
+  const hasAlreadyExists = /already exists/i.test(trimmed);
+  const hasPrKeyword = /\b(pull request|pr)\b/i.test(trimmed);
+  const hasBranch = /\bbranch\b/i.test(trimmed);
+  if (hasAlreadyExists && hasPrKeyword && hasBranch) return true;
+
+  const hasChineseExists = trimmed.includes('已存在');
+  const hasChinesePr = trimmed.includes('拉取请求') || trimmed.includes('合并请求') || /\bPR\b/i.test(trimmed);
+  const hasChineseBranch = trimmed.includes('分支');
+  if (hasChineseExists && hasChinesePr && hasChineseBranch) return true;
   return false;
 }
 

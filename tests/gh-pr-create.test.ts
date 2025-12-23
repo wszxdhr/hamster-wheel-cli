@@ -43,8 +43,13 @@ test('buildPrCreateArgs 支持使用 body 文件', () => {
 });
 
 test('isPrAlreadyExistsMessage 可识别已有 PR 提示', () => {
-  assert.equal(isPrAlreadyExistsMessage('pull request already exists'), true);
-  assert.equal(isPrAlreadyExistsMessage('A PR already exists for branch'), true);
-  assert.equal(isPrAlreadyExistsMessage('提示：已存在拉取请求'), true);
+  assert.equal(
+    isPrAlreadyExistsMessage('a pull request for branch "feat/demo" into branch "main" already exists'),
+    true
+  );
+  assert.equal(isPrAlreadyExistsMessage('A PR already exists for branch feat/demo on branch main'), true);
+  assert.equal(isPrAlreadyExistsMessage('针对分支 feat/demo 到分支 main 的拉取请求已存在'), true);
+  assert.equal(isPrAlreadyExistsMessage('分支 feat/demo 已存在 PR，无法重复创建'), true);
+  assert.equal(isPrAlreadyExistsMessage('The draft already exists for PR #123'), false);
   assert.equal(isPrAlreadyExistsMessage('some other error'), false);
 });

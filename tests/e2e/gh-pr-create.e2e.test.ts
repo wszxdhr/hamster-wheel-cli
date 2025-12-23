@@ -22,7 +22,8 @@ const args = process.argv.slice(2);
 const isCreate = args[0] === 'pr' && args[1] === 'create';
 const isView = args[0] === 'pr' && args[1] === 'view';
 if (isCreate) {
-  process.stderr.write('pull request already exists');
+  const message = 'a pull request for branch "feat/demo" into branch "main" already exists';
+  process.stderr.write(message);
   process.exit(1);
 }
 if (isView) {
