@@ -13,8 +13,10 @@ yarn build
 ```bash
 node dist/cli.js run \
   --task "为现有项目补充自动化 CI" \
+  --task "补充测试覆盖" \
   --ai-cli "claude" \
   --ai-args "--model" "claude-3-opus" \
+  --multi-task-mode relay \
   --worktree \
   --base-branch main \
   --branch wheel-ai/ci-upgrade \
@@ -23,6 +25,7 @@ node dist/cli.js run \
   --pr --pr-title "chore: 自动化 CI" \
   --stop-signal "<<DONE>>"
 ```
+- `-t, --task`：任务描述，可重复传入多个任务，默认按接力模式依次执行。
 - `--ai-cli`/`--ai-args`：指向系统已有的 AI CLI，提示文本通过 stdin（或 `--ai-prompt-arg`）传入。
 - `--worktree`：在独立分支 worktree 中作业；基线分支通过 `--base-branch` 指定。
 - 使用 `--worktree` 创建的临时工作目录，在确认分支已提交、推送且存在 PR 后会自动清理（仅删除本次创建的 worktree）。
@@ -34,6 +37,7 @@ node dist/cli.js run \
 - `-v, --verbose`：输出完整调试日志（包含执行命令、stdout/stderr），便于开发排查。
 - `--webhook`：配置通知回调地址（可重复设置多个 URL）。
 - `--webhook-timeout`：webhook 请求超时（毫秒），默认 8000。
+- `--multi-task-mode`：多任务执行模式，支持 `relay`（默认接力）、`serial`、`serial-continue`、`parallel`，也可用中文描述。
 
 ## 全局配置快捷指令
 支持在 `~/.wheel-ai/config.toml` 配置一个快捷指令，用于减少重复的命令行参数书写。

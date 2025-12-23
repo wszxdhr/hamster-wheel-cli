@@ -7,6 +7,7 @@ import { buildAutoLogFilePath } from './logs';
 import { runLogsViewer } from './logs-viewer';
 import { runLoop } from './loop';
 import { defaultLogger } from './logger';
+import { buildTaskPlans, normalizeTaskList, parseMultiTaskMode } from './multi-task';
 import { runMonitor } from './monitor';
 import { resolvePath } from './utils';
 
@@ -57,7 +58,7 @@ export async function runCli(argv: string[]): Promise<void> {
 
   program
     .command('run')
-    .requiredOption('-t, --task <task>', '需要完成的任务描述（会进入 AI 提示）')
+    .option('-t, --task <task>', '需要完成的任务描述（可重复传入，独立处理）', collect, [])
     .option('-i, --iterations <number>', '最大迭代次数', value => parseInteger(value, 5), 5)
     .option('--ai-cli <command>', 'AI CLI 命令', 'claude')
     .option('--ai-args <args...>', 'AI CLI 参数', [])
@@ -83,31 +84,50 @@ export async function runCli(argv: string[]): Promise<void> {
     .option('--reviewer <user...>', 'PR reviewers', collect, [])
     .option('--webhook <url>', 'webhook 通知 URL（可重复）', collect, [])
     .option('--webhook-timeout <ms>', 'webhook 请求超时（毫秒）', value => parseInteger(value, 8000))
+    .option('--multi-task-mode <mode>', '多任务执行模式（relay/serial/serial-continue/parallel，或中文描述）', 'relay')
     .option('--stop-signal <token>', 'AI 输出中的停止标记', '<<DONE>>')
     .option('--log-file <path>', '日志输出文件路径')
     .option('--background', '切入后台运行', false)
     .option('-v, --verbose', '输出调试日志', false)
     .action(async (options) => {
+      const tasks = normalizeTaskList(options.task as string[] | string | undefined);
+      if (tasks.length === 0) {
+        throw new Error('需要至少提供一个任务描述');
+      }
+
+      const multiTaskMode = parseMultiTaskMode(options.multiTaskMode as string | undefined);
       const useWorktree = Boolean(options.worktree);
+      if (multiTaskMode === 'parallel' && !useWorktree) {
+        throw new Error('并行模式必须启用 --worktree');
+      }
+
       const branchInput = normalizeOptional(options.branch);
       const logFileInput = normalizeOptional(options.logFile);
+      const worktreePathInput = normalizeOptional(options.worktreePath);
       const background = Boolean(options.background);
+      const isMultiTask = tasks.length > 1;
 
-      let branchName = branchInput;
-      if (useWorktree && !branchName) {
-        branchName = generateBranchName();
+      const shouldInjectBranch = useWorktree && !branchInput && !isMultiTask;
+      let branchNameForBackground = branchInput;
+      if (shouldInjectBranch) {
+        branchNameForBackground = generateBranchName();
       }
 
       let logFile = logFileInput;
       if (background && !logFile) {
-        let branchForLog = branchName;
-        if (!branchForLog) {
-          try {
-            const current = await getCurrentBranch(process.cwd(), defaultLogger);
-            branchForLog = current || 'detached';
-          } catch {
-            branchForLog = 'unknown';
+        let branchForLog = 'multi-task';
+        if (!isMultiTask) {
+          branchForLog = branchNameForBackground ?? '';
+          if (!branchForLog) {
+            try {
+              const current = await getCurrentBranch(process.cwd(), defaultLogger);
+              branchForLog = current || 'detached';
+            } catch {
+              branchForLog = 'unknown';
+            }
           }
+        } else if (branchInput) {
+          branchForLog = `${branchInput}-multi`;
         }
         logFile = buildAutoLogFilePath(branchForLog);
       }
@@ -116,19 +136,29 @@ export async function runCli(argv: string[]): Promise<void> {
         if (!logFile) {
           throw new Error('后台运行需要指定日志文件');
         }
-        const args = buildBackgroundArgs(effectiveArgv, logFile, branchName, useWorktree && !branchInput);
+        const args = buildBackgroundArgs(effectiveArgv, logFile, branchNameForBackground, shouldInjectBranch);
         const child = spawn(process.execPath, [...process.execArgv, ...args], {
           detached: true,
           stdio: 'ignore'
         });
         child.unref();
         const displayLogFile = resolvePath(process.cwd(), logFile);
-        console.log(`已切入后台运行，日志输出至 ${displayLogFile}`);
+        const suffixNote = isMultiTask ? '（多任务将追加序号）' : '';
+        console.log(`已切入后台运行，日志输出至 ${displayLogFile}${suffixNote}`);
         return;
       }
 
-      const cliOptions: CliOptions = {
-        task: options.task as string,
+      const taskPlans = buildTaskPlans({
+        tasks,
+        mode: multiTaskMode,
+        useWorktree,
+        baseBranch: options.baseBranch as string,
+        branchInput,
+        worktreePath: worktreePathInput,
+        logFile: logFileInput
+      });
+
+      const baseOptions = {
         iterations: options.iterations as number,
         aiCli: options.aiCli as string,
         aiArgs: (options.aiArgs as string[]) ?? [],
@@ -137,9 +167,6 @@ export async function runCli(argv: string[]): Promise<void> {
         planFile: options.planFile as string,
         workflowDoc: options.workflowDoc as string,
         useWorktree,
-        branch: branchName,
-        worktreePath: options.worktreePath as string | undefined,
-        baseBranch: options.baseBranch as string,
         runTests: Boolean(options.runTests),
         runE2e: Boolean(options.runE2e),
         unitCommand: options.unitCommand as string | undefined,
@@ -154,13 +181,57 @@ export async function runCli(argv: string[]): Promise<void> {
         webhookUrls: (options.webhook as string[]) ?? [],
         webhookTimeout: options.webhookTimeout as number | undefined,
         stopSignal: options.stopSignal as string,
-        logFile,
         verbose: Boolean(options.verbose),
         skipInstall: Boolean(options.skipInstall)
       };
 
-      const config = buildLoopConfig(cliOptions, process.cwd());
-      await runLoop(config);
+      const runPlan = async (plan: typeof taskPlans[number]): Promise<void> => {
+        const cliOptions: CliOptions = {
+          task: plan.task,
+          ...baseOptions,
+          branch: plan.branchName,
+          worktreePath: plan.worktreePath,
+          baseBranch: plan.baseBranch,
+          logFile: plan.logFile
+        };
+        const config = buildLoopConfig(cliOptions, process.cwd());
+        await runLoop(config);
+      };
+
+      if (multiTaskMode === 'parallel') {
+        const results = await Promise.allSettled(taskPlans.map(plan => runPlan(plan)));
+        const errors = results.flatMap((result, index) => {
+          if (result.status === 'fulfilled') return [];
+          const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+          return [`任务 ${index + 1} 失败: ${reason}`];
+        });
+        if (errors.length > 0) {
+          errors.forEach(message => defaultLogger.warn(message));
+          throw new Error(errors.join('\n'));
+        }
+        return;
+      }
+
+      if (multiTaskMode === 'serial-continue') {
+        const errors: string[] = [];
+        for (const plan of taskPlans) {
+          try {
+            await runPlan(plan);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            errors.push(`任务 ${plan.index + 1} 失败: ${message}`);
+            defaultLogger.warn(`任务 ${plan.index + 1} 执行失败，继续下一任务：${message}`);
+          }
+        }
+        if (errors.length > 0) {
+          throw new Error(errors.join('\n'));
+        }
+        return;
+      }
+
+      for (const plan of taskPlans) {
+        await runPlan(plan);
+      }
     });
 
   program
