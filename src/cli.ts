@@ -1,8 +1,13 @@
+import { spawn } from 'node:child_process';
 import { Command } from 'commander';
 import { buildLoopConfig, CliOptions, defaultNotesPath, defaultPlanPath, defaultWorkflowDoc } from './config';
 import { applyShortcutArgv, loadGlobalConfig } from './global-config';
+import { generateBranchName, getCurrentBranch } from './git';
+import { buildAutoLogFilePath } from './logs';
 import { runLoop } from './loop';
 import { defaultLogger } from './logger';
+import { runMonitor } from './monitor';
+import { resolvePath } from './utils';
 
 function parseInteger(value: string, defaultValue: number): number {
   const parsed = Number.parseInt(value, 10);
@@ -12,6 +17,28 @@ function parseInteger(value: string, defaultValue: number): number {
 
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function normalizeOptional(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function hasOption(argv: string[], option: string): boolean {
+  return argv.some(arg => arg === option || arg.startsWith(`${option}=`));
+}
+
+function buildBackgroundArgs(argv: string[], logFile: string, branchName?: string, injectBranch = false): string[] {
+  const rawArgs = argv.slice(1);
+  const filtered = rawArgs.filter(arg => !(arg === '--background' || arg.startsWith('--background=')));
+  if (!hasOption(filtered, '--log-file')) {
+    filtered.push('--log-file', logFile);
+  }
+  if (injectBranch && branchName && !hasOption(filtered, '--branch')) {
+    filtered.push('--branch', branchName);
+  }
+  return filtered;
 }
 
 /**
@@ -55,8 +82,48 @@ export async function runCli(argv: string[]): Promise<void> {
     .option('--reviewer <user...>', 'PR reviewers', collect, [])
     .option('--stop-signal <token>', 'AI 输出中的停止标记', '<<DONE>>')
     .option('--log-file <path>', '日志输出文件路径')
+    .option('--background', '切入后台运行', false)
     .option('-v, --verbose', '输出调试日志', false)
     .action(async (options) => {
+      const useWorktree = Boolean(options.worktree);
+      const branchInput = normalizeOptional(options.branch);
+      const logFileInput = normalizeOptional(options.logFile);
+      const background = Boolean(options.background);
+
+      let branchName = branchInput;
+      if (useWorktree && !branchName) {
+        branchName = generateBranchName();
+      }
+
+      let logFile = logFileInput;
+      if (background && !logFile) {
+        let branchForLog = branchName;
+        if (!branchForLog) {
+          try {
+            const current = await getCurrentBranch(process.cwd(), defaultLogger);
+            branchForLog = current || 'detached';
+          } catch {
+            branchForLog = 'unknown';
+          }
+        }
+        logFile = buildAutoLogFilePath(branchForLog);
+      }
+
+      if (background) {
+        if (!logFile) {
+          throw new Error('后台运行需要指定日志文件');
+        }
+        const args = buildBackgroundArgs(effectiveArgv, logFile, branchName, useWorktree && !branchInput);
+        const child = spawn(process.execPath, [...process.execArgv, ...args], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        child.unref();
+        const displayLogFile = resolvePath(process.cwd(), logFile);
+        console.log(`已切入后台运行，日志输出至 ${displayLogFile}`);
+        return;
+      }
+
       const cliOptions: CliOptions = {
         task: options.task as string,
         iterations: options.iterations as number,
@@ -66,8 +133,8 @@ export async function runCli(argv: string[]): Promise<void> {
         notesFile: options.notesFile as string,
         planFile: options.planFile as string,
         workflowDoc: options.workflowDoc as string,
-        useWorktree: Boolean(options.worktree),
-        branch: options.branch as string | undefined,
+        useWorktree,
+        branch: branchName,
         worktreePath: options.worktreePath as string | undefined,
         baseBranch: options.baseBranch as string,
         runTests: Boolean(options.runTests),
@@ -82,13 +149,20 @@ export async function runCli(argv: string[]): Promise<void> {
         draft: Boolean(options.draft),
         reviewers: (options.reviewer as string[]) ?? [],
         stopSignal: options.stopSignal as string,
-        logFile: options.logFile as string | undefined,
+        logFile,
         verbose: Boolean(options.verbose),
         skipInstall: Boolean(options.skipInstall)
       };
 
       const config = buildLoopConfig(cliOptions, process.cwd());
       await runLoop(config);
+    });
+
+  program
+    .command('monitor')
+    .description('查看后台运行日志')
+    .action(async () => {
+      await runMonitor();
     });
 
   await program.parseAsync(effectiveArgv);

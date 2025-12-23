@@ -5,6 +5,8 @@ import { ensureDependencies } from './deps';
 import { GhPrInfo, createPr, listFailedRuns, viewPr } from './gh';
 import { Logger } from './logger';
 import { commitAll, ensureWorktree, getCurrentBranch, getRepoRoot, isBranchPushed, isWorktreeClean, pushBranch, removeWorktree } from './git';
+import { formatCommandLine } from './logs';
+import { createRunTracker } from './runtime-tracker';
 import { buildFallbackSummary, buildSummaryPrompt, ensurePrBodySections, parseDeliverySummary } from './summary';
 import { CommitMessage, DeliverySummary, LoopConfig, TestRunResult, TokenUsage, WorkflowFiles, WorktreeResult } from './types';
 import { appendSection, ensureFile, isoNow, readFileSafe, runCommand } from './utils';
@@ -170,207 +172,223 @@ export async function runLoop(config: LoopConfig): Promise<void> {
   const worktreeCreated = worktreeResult.created;
   logger.debug(`工作目录: ${workDir}`);
 
-  if (config.skipInstall) {
-    logger.info('已跳过依赖检查');
-  } else {
-    await ensureDependencies(workDir, logger);
-  }
+  const commandLine = formatCommandLine(process.argv);
+  const runTracker = await createRunTracker({
+    logFile: config.logFile,
+    command: commandLine,
+    path: workDir,
+    logger
+  });
 
-  const workflowFiles = reRootWorkflowFiles(config.workflowFiles, repoRoot, workDir);
-  await ensureWorkflowFiles(workflowFiles);
-
-  const planContent = await readFileSafe(workflowFiles.planFile);
-  if (planContent.trim().length === 0) {
-    logger.warn('plan 文件为空，建议 AI 首轮生成计划');
-  }
-
-  let branchName = config.git.branchName;
-  if (!branchName) {
-    branchName = await getCurrentBranch(workDir, logger);
-  }
-
-  const aiConfig = config.ai;
-
-  let accumulatedUsage: TokenUsage | null = null;
-  let lastTestResults: TestRunResult[] | null = null;
-  let lastAiOutput = '';
-  let prInfo: GhPrInfo | null = null;
-  let prFailed = false;
-
-  for (let i = 1; i <= config.iterations; i += 1) {
-    const workflowGuide = await readFileSafe(workflowFiles.workflowDoc);
-    const plan = await readFileSafe(workflowFiles.planFile);
-    const notes = await readFileSafe(workflowFiles.notesFile);
-    logger.debug(`加载提示上下文，长度：workflow=${workflowGuide.length}, plan=${plan.length}, notes=${notes.length}`);
-
-    const prompt = buildPrompt({
-      task: config.task,
-      workflowGuide,
-      plan,
-      notes,
-      iteration: i
-    });
-    logger.debug(`第 ${i} 轮提示长度: ${prompt.length}`);
-
-    logger.info(`第 ${i} 轮提示构建完成，调用 AI CLI...`);
-    const aiResult = await runAi(prompt, aiConfig, logger, workDir);
-    accumulatedUsage = mergeTokenUsage(accumulatedUsage, aiResult.usage);
-    lastAiOutput = aiResult.output;
-
-    const hitStop = aiResult.output.includes(config.stopSignal);
-    let testResults: TestRunResult[] = [];
-    const shouldRunTests = config.runTests || config.runE2e;
-    if (shouldRunTests) {
-      try {
-        testResults = await runTests(config, workDir, logger);
-      } catch (error) {
-        const errorMessage = String(error);
-        logger.warn(`测试执行异常: ${errorMessage}`);
-        testResults = [{
-          kind: 'unit',
-          command: config.tests.unitCommand ?? '未知测试命令',
-          success: false,
-          exitCode: -1,
-          stdout: '',
-          stderr: trimOutput(errorMessage)
-        }];
-      }
-    }
-
-    const record = formatIterationRecord({
-      iteration: i,
-      prompt,
-      aiOutput: aiResult.output,
-      timestamp: isoNow(),
-      testResults
-    });
-
-    await appendSection(workflowFiles.notesFile, record);
-    logger.success(`已将第 ${i} 轮输出写入 ${workflowFiles.notesFile}`);
-
-    lastTestResults = testResults;
-
-    const hasTestFailure = testResults.some(result => !result.success);
-
-    if (hitStop && !hasTestFailure) {
-      logger.info(`检测到停止标记 ${config.stopSignal}，提前结束循环`);
-      break;
-    }
-    if (hitStop && hasTestFailure) {
-      logger.info(`检测到停止标记 ${config.stopSignal}，但测试失败，继续进入下一轮修复`);
-    }
-  }
-
-  const lastTestFailed = lastTestResults?.some(result => !result.success) ?? false;
-
-  if (lastTestFailed) {
-    logger.warn('存在未通过的测试，已跳过自动提交/推送/PR');
-  }
-
-  let deliverySummary: DeliverySummary | null = null;
-  const shouldPrepareDelivery = !lastTestFailed && (config.autoCommit || config.pr.enable);
-  if (shouldPrepareDelivery) {
-    const [gitStatus, diffStat] = await Promise.all([
-      safeCommandOutput('git', ['status', '--short'], workDir, logger, 'git', 'git status --short'),
-      safeCommandOutput('git', ['diff', '--stat'], workDir, logger, 'git', 'git diff --stat')
-    ]);
-    const summaryPrompt = buildSummaryPrompt({
-      task: config.task,
-      plan: await readFileSafe(workflowFiles.planFile),
-      notes: await readFileSafe(workflowFiles.notesFile),
-      lastAiOutput,
-      testResults: lastTestResults,
-      gitStatus,
-      diffStat,
-      branchName
-    });
-    try {
-      const summaryResult = await runAi(summaryPrompt, aiConfig, logger, workDir);
-      accumulatedUsage = mergeTokenUsage(accumulatedUsage, summaryResult.usage);
-      deliverySummary = parseDeliverySummary(summaryResult.output);
-      if (!deliverySummary) {
-        logger.warn('AI 总结输出解析失败，使用兜底文案');
-      }
-    } catch (error) {
-      logger.warn(`AI 总结生成失败: ${String(error)}`);
-    }
-    if (!deliverySummary) {
-      deliverySummary = buildFallbackSummary({ task: config.task, testResults: lastTestResults });
-    }
-  }
-
-  if (config.autoCommit && !lastTestFailed) {
-    const summary = deliverySummary ?? buildFallbackSummary({ task: config.task, testResults: lastTestResults });
-    const commitMessage: CommitMessage = {
-      title: summary.commitTitle,
-      body: summary.commitBody
-    };
-    await commitAll(commitMessage, workDir, logger).catch(error => {
-      logger.warn(String(error));
-    });
-  }
-
-  if (config.autoPush && branchName && !lastTestFailed) {
-    await pushBranch(branchName, workDir, logger).catch(error => {
-      logger.warn(String(error));
-    });
-  }
-
-  if (config.pr.enable && branchName && !lastTestFailed) {
-    logger.info('开始创建 PR...');
-    const summary = deliverySummary ?? buildFallbackSummary({ task: config.task, testResults: lastTestResults });
-    const prTitleCandidate = config.pr.title?.trim() || summary.prTitle;
-    const prBodyContent = ensurePrBodySections(summary.prBody, {
-      commitTitle: summary.commitTitle,
-      commitBody: summary.commitBody,
-      testResults: lastTestResults
-    });
-    const bodyFile = config.pr.bodyPath ?? buildBodyFile(workDir);
-    await writePrBody(bodyFile, prBodyContent, Boolean(config.pr.bodyPath));
-
-    const createdPr = await createPr(branchName, { ...config.pr, title: prTitleCandidate, bodyPath: bodyFile }, workDir, logger);
-    prInfo = createdPr;
-    if (createdPr) {
-      logger.success(`PR 已创建: ${createdPr.url}`);
-      const failedRuns = await listFailedRuns(branchName, workDir, logger);
-      if (failedRuns.length > 0) {
-        failedRuns.forEach(run => {
-          logger.warn(`Actions 失败: ${run.name} (${run.status}/${run.conclusion ?? 'unknown'}) ${run.url}`);
-        });
-      }
+  try {
+    if (config.skipInstall) {
+      logger.info('已跳过依赖检查');
     } else {
-      prFailed = true;
-      logger.error('PR 创建失败，详见上方 gh 输出');
+      await ensureDependencies(workDir, logger);
     }
-  } else if (branchName && !config.pr.enable) {
-    logger.info('未开启 PR 创建（--pr 未传），尝试查看已有 PR');
-    const existingPr = await viewPr(branchName, workDir, logger);
-    prInfo = existingPr;
-    if (existingPr) logger.info(`已有 PR: ${existingPr.url}`);
-  }
 
-  if (accumulatedUsage) {
-    const input = accumulatedUsage.inputTokens ?? '-';
-    const output = accumulatedUsage.outputTokens ?? '-';
-    logger.info(`Token 消耗汇总：输入 ${input}｜输出 ${output}｜总计 ${accumulatedUsage.totalTokens}`);
-  } else {
-    logger.info('未解析到 Token 消耗信息，可检查 AI CLI 输出格式是否包含 token 提示');
-  }
+    const workflowFiles = reRootWorkflowFiles(config.workflowFiles, repoRoot, workDir);
+    await ensureWorkflowFiles(workflowFiles);
 
-  if (lastTestFailed || prFailed) {
-    throw new Error('流程存在未解决的问题（测试未通过或 PR 创建失败）');
-  }
+    const planContent = await readFileSafe(workflowFiles.planFile);
+    if (planContent.trim().length === 0) {
+      logger.warn('plan 文件为空，建议 AI 首轮生成计划');
+    }
 
-  if (config.git.useWorktree && workDir !== repoRoot) {
-    await cleanupWorktreeIfSafe({
-      repoRoot,
-      workDir,
-      branchName,
-      prInfo,
-      worktreeCreated,
-      logger
-    });
-  }
+    let branchName = config.git.branchName;
+    if (!branchName) {
+      branchName = await getCurrentBranch(workDir, logger);
+    }
 
-  logger.success(`fuxi 迭代流程结束｜Token 总计 ${accumulatedUsage?.totalTokens ?? '未知'}`);
+    const aiConfig = config.ai;
+
+    let accumulatedUsage: TokenUsage | null = null;
+    let lastTestResults: TestRunResult[] | null = null;
+    let lastAiOutput = '';
+    let prInfo: GhPrInfo | null = null;
+    let prFailed = false;
+    let lastRound = 0;
+
+    for (let i = 1; i <= config.iterations; i += 1) {
+      const workflowGuide = await readFileSafe(workflowFiles.workflowDoc);
+      const plan = await readFileSafe(workflowFiles.planFile);
+      const notes = await readFileSafe(workflowFiles.notesFile);
+      logger.debug(`加载提示上下文，长度：workflow=${workflowGuide.length}, plan=${plan.length}, notes=${notes.length}`);
+
+      const prompt = buildPrompt({
+        task: config.task,
+        workflowGuide,
+        plan,
+        notes,
+        iteration: i
+      });
+      logger.debug(`第 ${i} 轮提示长度: ${prompt.length}`);
+
+      logger.info(`第 ${i} 轮提示构建完成，调用 AI CLI...`);
+      const aiResult = await runAi(prompt, aiConfig, logger, workDir);
+      accumulatedUsage = mergeTokenUsage(accumulatedUsage, aiResult.usage);
+      lastAiOutput = aiResult.output;
+
+      const hitStop = aiResult.output.includes(config.stopSignal);
+      let testResults: TestRunResult[] = [];
+      const shouldRunTests = config.runTests || config.runE2e;
+      if (shouldRunTests) {
+        try {
+          testResults = await runTests(config, workDir, logger);
+        } catch (error) {
+          const errorMessage = String(error);
+          logger.warn(`测试执行异常: ${errorMessage}`);
+          testResults = [{
+            kind: 'unit',
+            command: config.tests.unitCommand ?? '未知测试命令',
+            success: false,
+            exitCode: -1,
+            stdout: '',
+            stderr: trimOutput(errorMessage)
+          }];
+        }
+      }
+
+      const record = formatIterationRecord({
+        iteration: i,
+        prompt,
+        aiOutput: aiResult.output,
+        timestamp: isoNow(),
+        testResults
+      });
+
+      await appendSection(workflowFiles.notesFile, record);
+      logger.success(`已将第 ${i} 轮输出写入 ${workflowFiles.notesFile}`);
+
+      lastTestResults = testResults;
+      lastRound = i;
+      await runTracker?.update(i, accumulatedUsage?.totalTokens ?? 0);
+
+      const hasTestFailure = testResults.some(result => !result.success);
+
+      if (hitStop && !hasTestFailure) {
+        logger.info(`检测到停止标记 ${config.stopSignal}，提前结束循环`);
+        break;
+      }
+      if (hitStop && hasTestFailure) {
+        logger.info(`检测到停止标记 ${config.stopSignal}，但测试失败，继续进入下一轮修复`);
+      }
+    }
+
+    const lastTestFailed = lastTestResults?.some(result => !result.success) ?? false;
+
+    if (lastTestFailed) {
+      logger.warn('存在未通过的测试，已跳过自动提交/推送/PR');
+    }
+
+    let deliverySummary: DeliverySummary | null = null;
+    const shouldPrepareDelivery = !lastTestFailed && (config.autoCommit || config.pr.enable);
+    if (shouldPrepareDelivery) {
+      const [gitStatus, diffStat] = await Promise.all([
+        safeCommandOutput('git', ['status', '--short'], workDir, logger, 'git', 'git status --short'),
+        safeCommandOutput('git', ['diff', '--stat'], workDir, logger, 'git', 'git diff --stat')
+      ]);
+      const summaryPrompt = buildSummaryPrompt({
+        task: config.task,
+        plan: await readFileSafe(workflowFiles.planFile),
+        notes: await readFileSafe(workflowFiles.notesFile),
+        lastAiOutput,
+        testResults: lastTestResults,
+        gitStatus,
+        diffStat,
+        branchName
+      });
+      try {
+        const summaryResult = await runAi(summaryPrompt, aiConfig, logger, workDir);
+        accumulatedUsage = mergeTokenUsage(accumulatedUsage, summaryResult.usage);
+        deliverySummary = parseDeliverySummary(summaryResult.output);
+        if (!deliverySummary) {
+          logger.warn('AI 总结输出解析失败，使用兜底文案');
+        }
+      } catch (error) {
+        logger.warn(`AI 总结生成失败: ${String(error)}`);
+      }
+      if (!deliverySummary) {
+        deliverySummary = buildFallbackSummary({ task: config.task, testResults: lastTestResults });
+      }
+    }
+    await runTracker?.update(lastRound, accumulatedUsage?.totalTokens ?? 0);
+
+    if (config.autoCommit && !lastTestFailed) {
+      const summary = deliverySummary ?? buildFallbackSummary({ task: config.task, testResults: lastTestResults });
+      const commitMessage: CommitMessage = {
+        title: summary.commitTitle,
+        body: summary.commitBody
+      };
+      await commitAll(commitMessage, workDir, logger).catch(error => {
+        logger.warn(String(error));
+      });
+    }
+
+    if (config.autoPush && branchName && !lastTestFailed) {
+      await pushBranch(branchName, workDir, logger).catch(error => {
+        logger.warn(String(error));
+      });
+    }
+
+    if (config.pr.enable && branchName && !lastTestFailed) {
+      logger.info('开始创建 PR...');
+      const summary = deliverySummary ?? buildFallbackSummary({ task: config.task, testResults: lastTestResults });
+      const prTitleCandidate = config.pr.title?.trim() || summary.prTitle;
+      const prBodyContent = ensurePrBodySections(summary.prBody, {
+        commitTitle: summary.commitTitle,
+        commitBody: summary.commitBody,
+        testResults: lastTestResults
+      });
+      const bodyFile = config.pr.bodyPath ?? buildBodyFile(workDir);
+      await writePrBody(bodyFile, prBodyContent, Boolean(config.pr.bodyPath));
+
+      const createdPr = await createPr(branchName, { ...config.pr, title: prTitleCandidate, bodyPath: bodyFile }, workDir, logger);
+      prInfo = createdPr;
+      if (createdPr) {
+        logger.success(`PR 已创建: ${createdPr.url}`);
+        const failedRuns = await listFailedRuns(branchName, workDir, logger);
+        if (failedRuns.length > 0) {
+          failedRuns.forEach(run => {
+            logger.warn(`Actions 失败: ${run.name} (${run.status}/${run.conclusion ?? 'unknown'}) ${run.url}`);
+          });
+        }
+      } else {
+        prFailed = true;
+        logger.error('PR 创建失败，详见上方 gh 输出');
+      }
+    } else if (branchName && !config.pr.enable) {
+      logger.info('未开启 PR 创建（--pr 未传），尝试查看已有 PR');
+      const existingPr = await viewPr(branchName, workDir, logger);
+      prInfo = existingPr;
+      if (existingPr) logger.info(`已有 PR: ${existingPr.url}`);
+    }
+
+    if (accumulatedUsage) {
+      const input = accumulatedUsage.inputTokens ?? '-';
+      const output = accumulatedUsage.outputTokens ?? '-';
+      logger.info(`Token 消耗汇总：输入 ${input}｜输出 ${output}｜总计 ${accumulatedUsage.totalTokens}`);
+    } else {
+      logger.info('未解析到 Token 消耗信息，可检查 AI CLI 输出格式是否包含 token 提示');
+    }
+
+    if (lastTestFailed || prFailed) {
+      throw new Error('流程存在未解决的问题（测试未通过或 PR 创建失败）');
+    }
+
+    if (config.git.useWorktree && workDir !== repoRoot) {
+      await cleanupWorktreeIfSafe({
+        repoRoot,
+        workDir,
+        branchName,
+        prInfo,
+        worktreeCreated,
+        logger
+      });
+    }
+
+    logger.success(`fuxi 迭代流程结束｜Token 总计 ${accumulatedUsage?.totalTokens ?? '未知'}`);
+  } finally {
+    await runTracker?.finalize();
+  }
 }
