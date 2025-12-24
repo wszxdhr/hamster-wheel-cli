@@ -10,6 +10,11 @@
 - webhook 时间戳改为本地时区 `YYYYMMDD-HHmmss` 格式。
 - logs 列表支持 PageUp/PageDown 翻页，并补充按键提示。
 
+## [0.2.1] - 2025-12-24
+### Added
+- 新增 `agent add/delete/set/list` 命令，支持管理 AI CLI 命令配置。
+- 支持在全局配置中存储与解析 `[agent]` 表（兼容 `[agents]` 读取），便于复用 AI CLI 命令。
+
 ## [0.2.0] - 2025-12-24
 ### Added
 - 新增 `alias run` 子命令，支持执行 alias 时追加参数并覆盖同名选项。
