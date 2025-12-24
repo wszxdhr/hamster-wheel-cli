@@ -291,15 +291,26 @@ export async function runLoop(config: LoopConfig): Promise<LoopResult> {
   let sessionIndex = 0;
 
   const preWorktreeRecords: string[] = [];
+  const resolveProjectName = (): string => path.basename(workDir);
 
   const notifyWebhook = async (event: 'task_start' | 'iteration_start' | 'task_end', iteration: number, stage: string): Promise<void> => {
-    const payload = buildWebhookPayload({
-      event,
-      task: config.task,
-      branch: branchName,
-      iteration,
-      stage
-    });
+    const project = resolveProjectName();
+    const payload = event === 'task_start'
+      ? buildWebhookPayload({
+          event,
+          task: config.task,
+          branch: branchName,
+          iteration,
+          stage,
+          project
+        })
+      : buildWebhookPayload({
+          event,
+          branch: branchName,
+          iteration,
+          stage,
+          project
+        });
     await sendWebhookNotifications(config.webhooks, payload, logger);
   };
 
