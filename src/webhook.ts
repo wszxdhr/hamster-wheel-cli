@@ -4,27 +4,45 @@ import type { WebhookConfig } from './types';
 
 export type WebhookEvent = 'task_start' | 'iteration_start' | 'task_end';
 
-export interface WebhookPayload {
+export interface WebhookPayloadBase {
   readonly event: WebhookEvent;
-  readonly task: string;
   readonly branch: string;
   readonly iteration: number;
   readonly stage: string;
   readonly timestamp: string;
+  readonly project: string;
   readonly commit: string;
   readonly pr: string;
 }
 
-export interface WebhookPayloadInput {
+export type WebhookPayload =
+  | (WebhookPayloadBase & {
+      readonly event: 'task_start';
+      readonly task: string;
+    })
+  | (WebhookPayloadBase & {
+      readonly event: 'iteration_start' | 'task_end';
+    });
+
+export interface WebhookPayloadInputBase {
   readonly event: WebhookEvent;
-  readonly task: string;
   readonly branch?: string;
   readonly iteration: number;
   readonly stage: string;
   readonly timestamp?: string;
+  readonly project: string;
   readonly commit?: string;
   readonly pr?: string;
 }
+
+export type WebhookPayloadInput =
+  | (WebhookPayloadInputBase & {
+      readonly event: 'task_start';
+      readonly task: string;
+    })
+  | (WebhookPayloadInputBase & {
+      readonly event: 'iteration_start' | 'task_end';
+    });
 
 export type FetchLikeResponse = {
   readonly ok: boolean;
@@ -49,15 +67,27 @@ export function normalizeWebhookUrls(urls?: string[]): string[] {
 }
 
 export function buildWebhookPayload(input: WebhookPayloadInput): WebhookPayload {
-  return {
-    event: input.event,
-    task: input.task,
+  const base = {
     branch: input.branch ?? '',
     iteration: input.iteration,
     stage: input.stage,
     timestamp: input.timestamp ?? localTimestamp(),
+    project: input.project,
     commit: input.commit ?? '',
     pr: input.pr ?? ''
+  };
+
+  if (input.event === 'task_start') {
+    return {
+      ...base,
+      event: 'task_start',
+      task: input.task
+    };
+  }
+
+  return {
+    ...base,
+    event: input.event
   };
 }
 

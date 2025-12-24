@@ -129,6 +129,7 @@ Payload 示例：
 {
   "event": "task_start",
   "task": "修复依赖安装错误",
+  "project": "webhook-start-task-project",
   "branch": "feat/webhooks",
   "iteration": 0,
   "stage": "任务开始",
@@ -139,7 +140,8 @@ Payload 示例：
 ```
 字段说明：
 - `event`：`task_start` / `iteration_start` / `task_end`
-- `task`：任务描述
+- `task`：任务描述（仅 `task_start` 会携带）
+- `project`：当前工作目录名称（仅文件夹名，不含路径）
 - `branch`：分支名（可能为空）
 - `iteration`：当前轮次（任务开始为 0）
 - `stage`：当前节点描述
