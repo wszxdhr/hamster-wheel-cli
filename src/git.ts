@@ -283,3 +283,20 @@ export function generateBranchName(): string {
   const stamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
   return `wheel-ai/${stamp}`;
 }
+
+/**
+ * 规范化 AI 输出的分支名。
+ */
+export function normalizeBranchName(raw: string | undefined, fallback: string): string {
+  if (!raw) return fallback;
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+  const withoutPrefix = trimmed.replace(/^wheel-ai[/-]+/i, '');
+  const slug = withoutPrefix
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
+  if (!slug) return fallback;
+  return `wheel-ai/${slug}`;
+}

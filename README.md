@@ -1,6 +1,6 @@
 # hamster-wheel-cli
 
-基于 Node.js + commander 的持续迭代开发工具，结合外部 AI CLI（运行时指定）驱动完整软件交付流程：需求澄清、计划生成、编码、自审、测试（单元+e2e）、推送与 PR。
+基于 Node.js + commander 的持续迭代开发工具，结合外部 AI CLI（运行时指定）驱动完整软件交付流程：需求澄清、计划生成、编码、自审、代码质量检查、测试（单元+e2e）、推送与 PR。
 
 ## 安装与构建
 ```bash
@@ -30,6 +30,7 @@ node dist/cli.js run \
 - `--worktree`：在独立分支 worktree 中作业；基线分支通过 `--base-branch` 指定。
 - 使用 `--worktree` 创建的临时工作目录，在确认分支已提交、推送且存在 PR 后会自动清理（仅删除本次创建的 worktree）。
 - `--run-tests`/`--run-e2e`：运行测试命令（默认 `yarn test`、`yarn e2e`）。
+- `--skip-quality`：跳过代码质量检查阶段（默认会尝试运行项目支持的质量检查命令）。
 - `--auto-commit`/`--auto-push`：迭代结束后自动提交与推送。
 - `--pr`：使用 `gh pr create` 创建 PR，可配合 `--pr-title`/`--pr-body`/`--draft`/`--reviewer`，未提供标题时会自动生成默认标题。
 - `--skip-install`：任务启动前跳过依赖检查与自动安装。

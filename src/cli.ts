@@ -182,6 +182,7 @@ export async function runCli(argv: string[]): Promise<void> {
     .option('--run-e2e', '运行 e2e 测试命令', false)
     .option('--unit-command <cmd>', '单元测试命令', 'yarn test')
     .option('--e2e-command <cmd>', 'e2e 测试命令', 'yarn e2e')
+    .option('--skip-quality', '跳过代码质量检查', false)
     .option('--auto-commit', '自动 git commit', false)
     .option('--auto-push', '自动 git push', false)
     .option('--pr', '使用 gh 创建 PR', false)
@@ -215,8 +216,9 @@ export async function runCli(argv: string[]): Promise<void> {
       const isMultiTask = tasks.length > 1;
       const isForegroundChild = process.env[FOREGROUND_CHILD_ENV] === '1';
       const canForegroundDetach = !background && !isForegroundChild && process.stdout.isTTY && process.stdin.isTTY;
+      const resolveBranchByAi = useWorktree && !branchInput && tasks.length === 1;
 
-      const shouldInjectBranch = useWorktree && !branchInput && !isMultiTask;
+      const shouldInjectBranch = useWorktree && !branchInput && !isMultiTask && !resolveBranchByAi;
       let branchNameForBackground = branchInput;
       if (shouldInjectBranch) {
         branchNameForBackground = generateBranchName();
@@ -305,7 +307,9 @@ export async function runCli(argv: string[]): Promise<void> {
         webhookTimeout: options.webhookTimeout as number | undefined,
         stopSignal: options.stopSignal as string,
         verbose: Boolean(options.verbose),
-        skipInstall: Boolean(options.skipInstall)
+        skipInstall: Boolean(options.skipInstall),
+        skipQuality: Boolean(options.skipQuality),
+        resolveBranchByAi
       };
 
       const runPlan = async (plan: typeof taskPlans[number]): Promise<void> => {

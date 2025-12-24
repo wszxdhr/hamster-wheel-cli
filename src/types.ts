@@ -131,6 +131,8 @@ export interface LoopConfig {
   readonly autoCommit: boolean;
   readonly autoPush: boolean;
   readonly skipInstall: boolean;
+  readonly skipQuality: boolean;
+  readonly resolveBranchByAi: boolean;
 }
 
 /**
@@ -169,6 +171,7 @@ export interface StreamOptions {
  */
 export interface IterationRecord {
   readonly iteration: number;
+  readonly stage?: string;
   readonly prompt: string;
   readonly aiOutput: string;
   readonly timestamp: string;

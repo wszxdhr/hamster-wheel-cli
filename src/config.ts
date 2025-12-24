@@ -35,6 +35,8 @@ export interface CliOptions {
   readonly logFile?: string;
   readonly verbose: boolean;
   readonly skipInstall: boolean;
+  readonly skipQuality: boolean;
+  readonly resolveBranchByAi: boolean;
 }
 
 function buildAiConfig(options: CliOptions): AiCliConfig {
@@ -108,7 +110,9 @@ export function buildLoopConfig(options: CliOptions, cwd: string): LoopConfig {
     runE2e: options.runE2e,
     autoCommit: options.autoCommit,
     autoPush: options.autoPush,
-    skipInstall: options.skipInstall
+    skipInstall: options.skipInstall,
+    skipQuality: options.skipQuality,
+    resolveBranchByAi: options.resolveBranchByAi
   };
 }
 
