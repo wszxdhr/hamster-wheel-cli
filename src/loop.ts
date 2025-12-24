@@ -40,7 +40,7 @@ function trimOutput(output: string, limit = MAX_LOG_LENGTH): string {
   return `${output.slice(0, limit)}\n……（输出已截断，原始长度 ${output.length} 字符）`;
 }
 
-function truncateText(text: string, limit = 24): string {
+function truncateText(text: string, limit = 100): string {
   const trimmed = text.trim();
   if (trimmed.length <= limit) return trimmed;
   return `${trimmed.slice(0, limit)}...`;
