@@ -300,6 +300,19 @@ function extractRunCommandArgs(argv: string[]): string[] {
   return args.slice(start + 1);
 }
 
+/**
+ * 从原始参数中提取 --ai-args 的完整值。
+ * commander 的 variadic 选项会在遇到 `-` 开头的参数时停止收集，
+ * 所以需要使用我们自己的解析逻辑来获取完整的参数列表。
+ */
+function extractAiArgsFromRawArgs(rawArgs: string[]): string[] {
+  const segments = parseArgSegments(rawArgs);
+  const aiArgsSegment = segments.find(segment => segment.name === 'ai-args');
+  if (!aiArgsSegment) return [];
+  // tokens 的第一个元素是 '--ai-args' 本身，后面的才是值
+  return aiArgsSegment.tokens.slice(1);
+}
+
 function parseUseOptionToken(token: string, flag: string): { matched: boolean; value?: string } {
   if (token === flag) {
     return { matched: true };
@@ -542,6 +555,8 @@ export async function runCli(argv: string[]): Promise<void> {
 
   program
     .command('run')
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
     .option('-t, --task <task>', '需要完成的任务描述（可重复传入，独立处理）', collect, [])
     .option('--use-alias <name>', '叠加 alias 配置（可重复）', collect, [])
     .option('--use-agent <name>', '叠加 agent 配置（可重复）', collect, [])
@@ -699,10 +714,13 @@ export async function runCli(argv: string[]): Promise<void> {
         logFile: logFileInput
       });
 
+      // 使用自己的解析逻辑提取 --ai-args，因为 commander 的 variadic 选项
+      // 会在遇到 `-` 开头的参数时停止收集
+      const extractedAiArgs = extractAiArgsFromRawArgs(rawRunArgs);
       const baseOptions = {
         iterations: options.iterations as number,
         aiCli: options.aiCli as string,
-        aiArgs: (options.aiArgs as string[]) ?? [],
+        aiArgs: extractedAiArgs.length > 0 ? extractedAiArgs : ((options.aiArgs as string[]) ?? []),
         aiPromptArg: options.aiPromptArg as string | undefined,
         notesFile: options.notesFile as string,
         planFile: options.planFile as string,
