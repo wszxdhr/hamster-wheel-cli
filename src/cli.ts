@@ -804,11 +804,13 @@ export async function runCli(argv: string[]): Promise<void> {
 
   const agentCommand = program
     .command('agent')
-    .description('管理 AI CLI agent 配置');
+    .description('管理 AI CLI agent 配置')
+    .enablePositionalOptions();
 
   agentCommand
     .command('add <name> [command...]')
     .description('新增 agent')
+    .passThroughOptions()
     .allowUnknownOption(true)
     .allowExcessArguments(true)
     .action(async (name: string) => {
