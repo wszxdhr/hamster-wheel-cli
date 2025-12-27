@@ -136,13 +136,3 @@ export const TASK_TYPE_KEYWORDS = {
  * 默认兜底分支名前缀
  */
 export const DEFAULT_BRANCH_PREFIX = 'wheel-ai';
-
-/**
- * 时间戳格式相关常量
- */
-export const TIMESTAMP_FORMAT = {
-  /** ISO 8601 格式 */
-  ISO: 'YYYY-MM-DDTHH:mm:ss.sssZ',
-  /** 本地时间戳格式 */
-  LOCAL: 'YYYYMMDD-HHmmss'
-} as const;
